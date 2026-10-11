@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.db import models
 from django.shortcuts import get_object_or_404, redirect, render
@@ -96,13 +97,14 @@ class ProductAdmin(admin.ModelAdmin):
         }),
     )
 
+    @admin.display(description='Price')
     def price_range_display(self, obj):
         lo, hi = obj.price_range
         if lo is None or hi is None:
             return '—'
         return f'KES {lo}' if lo == hi else f'KES {lo}–{hi}'
-    price_range_display.short_description = 'Price'
 
+    @admin.display(description='Hero slide')
     def hero_slide_preview(self, obj):
         if not obj.is_featured:
             return '—'
@@ -113,7 +115,6 @@ class ProductAdmin(admin.ModelAdmin):
             'background:#eef7ee;color:#256b2c;font-size:11px;">{} · {}</span>',
             tagline, headline,
         )
-    hero_slide_preview.short_description = 'Hero slide'
 
     @admin.action(description='Approve selected products (make visible in the shop)')
     def approve_products(self, request, queryset):
@@ -140,15 +141,125 @@ class BundleOfferAdmin(admin.ModelAdmin):
 
 
 # ======================================================================
-# Site chrome
+# Site chrome — Promotions (with media-type validation)
 # ======================================================================
+
+class PromotionAdminForm(forms.ModelForm):
+    """
+    Validate that the right file goes in the right field.
+
+    Cloudinary rejects non-image uploads to ImageField with a generic
+    "Invalid image file" 500, so we catch the mistake at form-validation
+    time and show the admin a clear red error under the offending field.
+    """
+
+    IMAGE_EXTS = ('jpg', 'jpeg', 'png', 'webp', 'gif', 'avif')
+    VIDEO_EXTS = ('mp4', 'webm', 'mov', 'm4v')
+
+    class Meta:
+        model = Promotion
+        fields = '__all__'
+
+    @staticmethod
+    def _ext(filename):
+        return (filename.rsplit('.', 1)[-1] or '').lower()
+
+    def clean_image(self):
+        image = self.cleaned_data.get('image')
+        # Only enforce if a *new* file was uploaded (not just the existing
+        # stored file re-attached). `image` is either a fresh UploadedFile
+        # or the existing FieldFile — check for the "new" flag.
+        if image and hasattr(image, 'file'):
+            ext = self._ext(getattr(image, 'name', '') or '')
+            if ext and ext not in self.IMAGE_EXTS:
+                raise forms.ValidationError(
+                    f'"{image.name}" is not an image. '
+                    f'Use the Video field for MP4 / WebM files.'
+                )
+        return image
+
+    def clean_video(self):
+        video = self.cleaned_data.get('video')
+        if video and hasattr(video, 'file'):
+            ext = self._ext(getattr(video, 'name', '') or '')
+            if ext and ext not in self.VIDEO_EXTS:
+                raise forms.ValidationError(
+                    f'"{video.name}" is not a supported video. '
+                    f'Use MP4 or WebM. If it\'s an image, put it in the Image field.'
+                )
+        return video
+
+    def clean(self):
+        cleaned = super().clean()
+        media_type = cleaned.get('media_type')
+        image = cleaned.get('image')
+        video = cleaned.get('video')
+        video_url = cleaned.get('video_url')
+
+        if media_type == Promotion.MediaType.VIDEO:
+            if image:
+                self.add_error(
+                    'image',
+                    'Media type is "Video" — clear the Image field. '
+                    'Videos must go in the Video field.'
+                )
+            if not (video or video_url):
+                self.add_error(
+                    'video',
+                    'Media type is "Video" — upload an MP4 or provide a Video URL.'
+                )
+        elif media_type == Promotion.MediaType.IMAGE:
+            if video:
+                self.add_error(
+                    'video',
+                    'Media type is "Image" — clear the Video field. '
+                    'Images must go in the Image field.'
+                )
+            if video_url:
+                self.add_error(
+                    'video_url',
+                    'Media type is "Image" — clear the Video URL.'
+                )
+            if not image:
+                self.add_error(
+                    'image',
+                    'Media type is "Image" — upload an image.'
+                )
+
+        return cleaned
+
 
 @admin.register(Promotion)
 class PromotionAdmin(admin.ModelAdmin):
+    form = PromotionAdminForm
     list_display = ('title', 'kicker', 'tone', 'media_type', 'is_active', 'sort_order')
     list_filter = ('tone', 'media_type', 'is_active')
     search_fields = ('title', 'kicker')
+    fieldsets = (
+        (None, {
+            'fields': ('kicker', 'title', 'description', 'voucher_code', 'tone'),
+        }),
+        ('Media', {
+            'fields': ('media_type', 'image', 'video', 'video_url'),
+            'description': (
+                '<strong>Image</strong> takes JPG / PNG / WebP / GIF. '
+                '<strong>Video</strong> takes MP4 / WebM (muted autoplay, so keep '
+                'it short). Set <em>Media type</em> to match whichever field '
+                'you filled in — the other one should be left blank.'
+            ),
+        }),
+        ('Call to action', {
+            'fields': ('cta_label', 'cta_url'),
+        }),
+        ('Visibility', {
+            'fields': ('is_active', 'sort_order'),
+        }),
+    )
 
+
+# ======================================================================
+# Site chrome — logo & background
+# ======================================================================
 
 @admin.register(SiteLogo)
 class SiteLogoAdmin(admin.ModelAdmin):
@@ -230,10 +341,10 @@ class SupplierSourceAdmin(admin.ModelAdmin):
         ]
         return extra + urls
 
+    @admin.display(description='Actions')
     def preview_button(self, obj):
         url = reverse('admin:store_suppliersource_preview', args=[obj.pk])
         return format_html('<a class="button" href="{}">Preview</a>', url)
-    preview_button.short_description = 'Actions'
 
     def preview_view(self, request, pk):
         from .importers.shopify import ShopifyImporter
