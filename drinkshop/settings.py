@@ -134,17 +134,36 @@ import dj_database_url
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
 
 if DATABASE_URL:
-    # Postgres / MySQL / Neon / Supabase etc. via DATABASE_URL
+    # Postgres / MySQL / Neon / Supabase etc. via DATABASE_URL.
+    #
+    # conn_max_age:
+    #   - Local dev / self-hosted: 600 (keep connections alive for
+    #     the persistent process — much faster page-to-page).
+    #   - Vercel serverless: 0 (release the connection immediately
+    #     after each request — otherwise the session pooler's
+    #     15-slot limit is exhausted within seconds).
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=600,
+            conn_max_age=0 if os.environ.get('VERCEL') else 600,
             conn_health_checks=True,
-            ssl_require=not DEBUG,   # only meaningful for Postgres in prod
+            ssl_require=not DEBUG,
         )
     }
+
+    # Supabase's transaction pooler (port 6543) does NOT support
+    # prepared statements or server-side cursors. Detect the port and
+    # disable both — otherwise psycopg will try them and fail.
+    try:
+        if str(DATABASES['default'].get('PORT')) == '6543':
+            DATABASES['default'].setdefault('OPTIONS', {})
+            DATABASES['default']['OPTIONS']['prepare_threshold'] = None
+            DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
+    except Exception:
+        pass
+
 else:
-    # Local dev — SQLite, no SSL, no conn_max_age weirdness
+    # Local dev without a DATABASE_URL — SQLite.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
