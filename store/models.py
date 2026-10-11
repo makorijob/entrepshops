@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import models
 from django.urls import reverse
 
+from .cloudinary_video_storage import VideoCloudinaryStorage
+
 
 class Promotion(models.Model):
     """An offer/voucher card shown in the homepage carousel. Fully
@@ -30,6 +32,7 @@ class Promotion(models.Model):
     )
     video = models.FileField(
         upload_to='promotions/videos/', blank=True, null=True,
+        storage=VideoCloudinaryStorage(),
         help_text='Used when Media type is "Video". MP4 recommended, keep it short — it autoplays muted and loops.'
     )
     video_url = models.URLField(
@@ -163,6 +166,7 @@ class ProductQuerySet(models.QuerySet):
             models.Q(variants__is_active=True, variants__stock__gt=0) |
             models.Q(variants__isnull=True, stock__gt=0)
         ).distinct()
+
 
 class Product(models.Model):
     class Availability(models.TextChoices):
