@@ -12,10 +12,10 @@
         <div class="hero-poster-media">
             {% if promo.media_type == 'video' and promo.video_source %}
                 <video autoplay muted loop playsinline preload="metadata">
-                    <source src="{{ promo.video_source }}" type="video/mp4">
+                    <source src="{{ promo.video_source }}">
                 </video>
             {% elif promo.image %}
-                <img src="{{ promo.image.url }}" alt="{{ promo.title }}">
+                <img src="{{ promo.image.url }}" alt="{{ promo.title }}" loading="eager">
             {% endif %}
         </div>
 
@@ -135,7 +135,7 @@
                 <div class="promo-poster-media">
                     {% if promo.media_type == 'video' and promo.video_source %}
                         <video autoplay muted loop playsinline preload="metadata">
-                            <source src="{{ promo.video_source }}" type="video/mp4">
+                            <source src="{{ promo.video_source }}">
                         </video>
                     {% elif promo.image %}
                         <img src="{{ promo.image.url }}" alt="{{ promo.title }}">
