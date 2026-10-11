@@ -285,3 +285,92 @@ def withdrawable_balance(user):
         .aggregate(s=Sum('amount'))['s'] or 0
     )
     return credited - locked
+
+
+class MarketerSubscription(models.Model):
+    """A user's activation fee for the WhatsApp Share & Earn programme.
+    Paid monthly; gates generating new share links and uploading new
+    proofs. Existing shares, views, and withdrawals are never affected."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending payment'
+        PAID = 'paid', 'Paid'
+        FAILED = 'failed', 'Failed'
+        REFUNDED = 'refunded', 'Refunded'
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name='marketer_subscription',
+        on_delete=models.CASCADE,
+    )
+
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING,
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    period_days = models.PositiveIntegerField(default=30)
+
+    paid_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    # M-Pesa audit fields
+    mpesa_phone = models.CharField(max_length=20, blank=True)
+    mpesa_checkout_request_id = models.CharField(max_length=64, blank=True)
+    mpesa_receipt = models.CharField(max_length=40, blank=True)
+    mpesa_result_code = models.CharField(max_length=10, blank=True)
+    mpesa_result_desc = models.CharField(max_length=255, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'{self.user} — KES {self.amount} ({self.status})'
+
+    @property
+    def is_active(self):
+        if self.status != self.Status.PAID:
+            return False
+        if not self.expires_at:
+            return False
+        return timezone.now() < self.expires_at
+
+    @property
+    def days_left(self):
+        if not self.is_active:
+            return 0
+        delta = self.expires_at - timezone.now()
+        return max(0, delta.days)
+
+    def mark_paid(self, receipt='', result_code='0', result_desc=''):
+        """Extend the subscription — adds to any remaining time if active."""
+        now = timezone.now()
+        base = self.expires_at if (self.expires_at and self.expires_at > now) else now
+
+        self.status = self.Status.PAID
+        self.paid_at = now
+        self.expires_at = base + timedelta(days=self.period_days)
+        self.mpesa_receipt = receipt
+        self.mpesa_result_code = result_code
+        self.mpesa_result_desc = result_desc[:255]
+        self.save(update_fields=[
+            'status', 'paid_at', 'expires_at',
+            'mpesa_receipt', 'mpesa_result_code', 'mpesa_result_desc',
+        ])
+
+    def mark_failed(self, code='', desc=''):
+        self.status = self.Status.FAILED
+        self.mpesa_result_code = code
+        self.mpesa_result_desc = desc[:255]
+        self.save(update_fields=['status', 'mpesa_result_code', 'mpesa_result_desc'])
+
+
+def has_active_marketing_subscription(user):
+    """True if the user has an active paid subscription. Admins bypass
+    this check in views via user.is_staff."""
+    if not user.is_authenticated:
+        return False
+    sub = getattr(user, 'marketer_subscription', None)
+    return bool(sub and sub.is_active)

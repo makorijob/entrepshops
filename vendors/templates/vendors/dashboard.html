@@ -22,17 +22,28 @@
         </ul>
     {% endif %}
 
-    {% if vendor.on_trial %}
+    {# ---- Subscription / trial status banner ---- #}
+    {% if vendor.has_active_subscription %}
+        <div class="vendor-banner vendor-banner-success">
+            <strong>Subscription active.</strong>
+            {{ vendor.subscription_days_left }} day{{ vendor.subscription_days_left|pluralize }} left —
+            expires {{ vendor.subscription_expires_at|date:"d M Y" }}.
+        </div>
+    {% elif vendor.on_trial %}
+        {# Legacy: existing trial vendors keep running until their trial ends. #}
         <div class="vendor-banner vendor-banner-warning">
             <strong>{{ vendor.trial_days_left }} day{{ vendor.trial_days_left|pluralize }} left on your free trial.</strong>
-            After that, subscribe for KES 5,000/month to keep adding products.
+            After that, subscribe for KES {{ subscription_fee }}/month to keep adding products.
             Your existing listings and orders are not affected.
         </div>
-    {% elif not vendor.has_active_subscription %}
+    {% else %}
         <div class="vendor-banner vendor-banner-error">
-            <strong>Your trial has ended.</strong>
-            Subscribe for KES 5,000/month to add new products.
+            <strong>Subscription required.</strong>
+            Pay KES {{ subscription_fee }} to start listing new products.
             Your existing listings remain live and orders are unaffected.
+            <a href="{% url 'vendors:subscribe' %}" class="btn btn-small" style="margin-left:12px;">
+                Subscribe now
+            </a>
         </div>
     {% endif %}
 
@@ -50,7 +61,7 @@
 
     <div class="vendor-actions">
         <a href="{% url 'vendors:product_create' %}"
-           class="btn {% if not vendor.can_list_products %}btn-disabled{% endif %}">
+           class="btn {% if not user.is_staff and not vendor.can_list_products_now %}btn-disabled{% endif %}">
             Add a product
         </a>
         <a href="{% url 'vendors:product_list' %}" class="btn btn-outline btn-small">
@@ -105,7 +116,11 @@
     {% else %}
         <div class="vendor-empty">
             <p>You haven't listed anything yet.</p>
-            <a href="{% url 'vendors:product_create' %}" class="btn">Add your first product</a>
+            {% if user.is_staff or vendor.can_list_products_now %}
+                <a href="{% url 'vendors:product_create' %}" class="btn">Add your first product</a>
+            {% else %}
+                <a href="{% url 'vendors:subscribe' %}" class="btn">Subscribe to start listing</a>
+            {% endif %}
         </div>
     {% endif %}
 

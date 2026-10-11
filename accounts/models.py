@@ -10,6 +10,7 @@ def generate_referral_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
 
 
+
 class Profile(models.Model):
     """Extends the built-in User with an avatar, referral code, and wallet.
     Created automatically for every user (see accounts/signals.py)."""
@@ -27,40 +28,81 @@ class Profile(models.Model):
         on_delete=models.SET_NULL,
         help_text='The user whose referral code/link this person signed up through.'
     )
-    referral_bonus_released = models.BooleanField(
+
+    # Two-stage referral payout flags — each flips to True exactly once.
+    email_bonus_released = models.BooleanField(
         default=False,
-        help_text='Set automatically once this referral pays out — happens after the referred '
-                   'user completes their first paid order, not at signup, to discourage fake signups.'
+        help_text='Stage 1: set once the referred user verifies their email '
+                   'and the email bonus has been paid to both sides.'
     )
+    first_order_bonus_released = models.BooleanField(
+        default=False,
+        help_text='Stage 2: set once the referred user completes their first '
+                   'paid order and the first-order bonus has been paid to both sides.'
+    )
+
+    # Legacy flag — kept for backward compatibility with old data.
+    # New logic uses email_bonus_released and first_order_bonus_released.
+    referral_bonus_released = models.BooleanField(default=False)
+
     wallet_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f'{self.user.username} profile'
 
-    def release_referral_bonus_if_due(self):
-        """Call this when the referred user's order is marked paid. Pays
-        out to both sides exactly once, on their first paid order — a
-        genuine earned action, not just an account signup."""
-        if not self.referred_by_id or self.referral_bonus_released:
+    def release_email_bonus_if_due(self):
+        """Stage 1 — called when the referred user verifies their email.
+        Pays KES to both sides exactly once. Idempotent: safe to call
+        multiple times (a second call finds the flag already set and
+        returns immediately)."""
+        if not self.referred_by_id or self.email_bonus_released:
             return
-        bonus = settings.REFERRAL_BONUS_KES
+        bonus = getattr(settings, 'REFERRAL_EMAIL_BONUS_KES', 0)
         if bonus <= 0:
-            self.referral_bonus_released = True
-            self.save(update_fields=['referral_bonus_released'])
+            # Even with a zero bonus, mark as released so we don't re-check.
+            self.email_bonus_released = True
+            self.save(update_fields=['email_bonus_released'])
             return
 
         referrer_profile, _ = Profile.objects.get_or_create(user=self.referred_by)
         referrer_profile.credit_wallet(
-            bonus, WalletTransaction.Kind.REFERRAL_BONUS,
+            bonus, WalletTransaction.Kind.REFERRAL_EMAIL_BONUS,
+            description=f'{self.user.username} verified their email',
+        )
+        self.credit_wallet(
+            bonus, WalletTransaction.Kind.REFERRAL_EMAIL_BONUS,
+            description='Referral bonus — email verified',
+        )
+        self.email_bonus_released = True
+        self.save(update_fields=['email_bonus_released'])
+
+    def release_first_order_bonus_if_due(self):
+        """Stage 2 — called when the referred user completes their first
+        paid order. Only pays if stage 1 (email verification) already
+        happened. Idempotent."""
+        if not self.referred_by_id or self.first_order_bonus_released:
+            return
+        # Gate on email verification — no email bonus, no order bonus.
+        if not self.email_bonus_released:
+            return
+        bonus = getattr(settings, 'REFERRAL_FIRST_ORDER_BONUS_KES', 0)
+        if bonus <= 0:
+            self.first_order_bonus_released = True
+            self.save(update_fields=['first_order_bonus_released'])
+            return
+
+        referrer_profile, _ = Profile.objects.get_or_create(user=self.referred_by)
+        referrer_profile.credit_wallet(
+            bonus, WalletTransaction.Kind.REFERRAL_FIRST_ORDER,
             description=f'{self.user.username} completed their first order',
         )
         self.credit_wallet(
-            bonus, WalletTransaction.Kind.REFERRAL_SIGNUP_BONUS,
-            description=f'Referral bonus — first order complete',
+            bonus, WalletTransaction.Kind.REFERRAL_FIRST_ORDER,
+            description='Referral bonus — first order complete',
         )
-        self.referral_bonus_released = True
-        self.save(update_fields=['referral_bonus_released'])
+        self.first_order_bonus_released = True
+        self.save(update_fields=['first_order_bonus_released'])
 
     def save(self, *args, **kwargs):
         if not self.referral_code:
@@ -103,14 +145,20 @@ class Profile(models.Model):
 
 class WalletTransaction(models.Model):
     class Kind(models.TextChoices):
-        REFERRAL_BONUS = 'referral_bonus', 'Referral bonus'
-        REFERRAL_SIGNUP_BONUS = 'referral_signup_bonus', 'Welcome bonus (referred)'
+        REFERRAL_EMAIL_BONUS = 'referral_email_bonus', 'Referral bonus — email verified'
+        REFERRAL_FIRST_ORDER = 'referral_first_order', 'Referral bonus — first order'
         SPIN_WIN = 'spin_win', 'Daily spin win'
         ADJUSTMENT = 'adjustment', 'Manual adjustment'
         WITHDRAWAL = 'withdrawal', 'Wallet withdrawal'
         WITHDRAWAL_REVERSAL = 'withdrawal_reversal', 'Withdrawal reversed (failed payout)'
+        # Legacy — kept for old transaction rows so get_kind_display() doesn't break.
+        REFERRAL_BONUS = 'referral_bonus', 'Referral bonus (legacy)'
+        REFERRAL_SIGNUP_BONUS = 'referral_signup_bonus', 'Welcome bonus (referred, legacy)'
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='wallet_transactions', on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name='wallet_transactions',
+        on_delete=models.CASCADE,
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     kind = models.CharField(max_length=30, choices=Kind.choices)
     description = models.CharField(max_length=200, blank=True)
@@ -202,13 +250,12 @@ class SpinWheelTheme(models.Model):
     def get_active(cls):
         return cls.objects.filter(is_active=True).first()
 
-
 class SpinPrize(models.Model):
     """A possible outcome of the daily spin wheel. Manage these entirely
-    from /admin/ — labels, odds (weight), and whether each is currently in
-    play. Cash-value prizes are auto-credited to the winner's wallet;
-    physical prizes (drinks, a smartphone, etc.) are recorded as a win for
-    you to fulfil manually."""
+    from /admin/ — labels, odds (weight), colour, and whether each is
+    currently in play. Cash-value prizes are auto-credited to the winner's
+    wallet; physical prizes (drinks, a smartphone, etc.) are recorded as a
+    win for you to fulfil manually."""
 
     class Kind(models.TextChoices):
         CASH = 'cash', 'Cash voucher'
@@ -229,6 +276,11 @@ class SpinPrize(models.Model):
         default=10, help_text='Relative odds — higher weight wins more often. Try_again prizes should carry most of the weight.'
     )
     image = models.ImageField(upload_to='spin/prizes/', blank=True, null=True)
+    color = models.CharField(
+        max_length=7,
+        default='#2FA66B',
+        help_text='Hex colour for this slice on the wheel, e.g. #2FA66B (green), #FF8A3D (orange), #E8B93C (gold), #B5541A (rust).',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:

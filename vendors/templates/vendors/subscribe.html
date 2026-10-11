@@ -3,23 +3,103 @@
 
 {% block content %}
 <div class="container">
-<div class="page-head">
-    <span class="eyebrow">{{ vendor.business_name }}</span>
-    <h1>{% if vendor.subscription_active %}Renew your subscription{% else %}Activate your subscription{% endif %}</h1>
-    <p class="lede">KES {{ fee }} covers {{ days }} days of listing access. Paying early stacks onto time you already have — nothing is wasted.</p>
-</div>
+    <div class="page-head">
+        <span class="eyebrow">{{ vendor.business_name }}</span>
+        <h1>
+            {% if vendor.has_active_subscription %}
+                Renew your subscription
+            {% else %}
+                Activate your subscription
+            {% endif %}
+        </h1>
+        <p class="lede">
+            KES {{ subscription_fee }} covers {{ subscription_days }} days of listing access.
+            {% if vendor.has_active_subscription %}
+                Paying early stacks onto the {{ vendor.subscription_days_left }} days you already have — nothing is wasted.
+            {% endif %}
+        </p>
+    </div>
 
-<div class="form-card">
-    <form method="post" class="auth-form">
-        {% csrf_token %}
-        <label>M-Pesa phone number
-            <input type="text" name="phone_number" placeholder="{{ vendor.phone_number }}">
-        </label>
-        <button type="submit" class="btn btn-orange">Pay KES {{ fee }} with M-Pesa</button>
-    </form>
-    {% if vendor.subscription_active %}
-        <p class="badge badge-success" style="margin-top:16px">Active until {{ vendor.subscription_expires_at|date:"d M Y" }}</p>
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li class="message {{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div class="form-card">
+        {% if vendor.has_active_subscription %}
+            <p class="badge badge-success" style="margin-bottom:16px;">
+                Active until {{ vendor.subscription_expires_at|date:"d M Y" }}
+                ({{ vendor.subscription_days_left }} day{{ vendor.subscription_days_left|pluralize }} left)
+            </p>
+        {% endif %}
+
+        <form method="post" action="{% url 'vendors:start_subscription_payment' %}" class="auth-form">
+            {% csrf_token %}
+            <label>M-Pesa phone number
+                <input type="text" name="phone_number"
+                       placeholder="2547XXXXXXXX"
+                       value="{{ vendor.phone_number }}">
+            </label>
+            <button type="submit" class="btn btn-orange">
+                Pay KES {{ subscription_fee }} with M-Pesa
+            </button>
+            <p class="helptext" style="margin-top:12px">
+                You'll receive an M-Pesa prompt on this number. Enter your PIN
+                to complete the payment — your subscription activates automatically.
+            </p>
+        </form>
+
+        <div id="sub-status" style="margin-top:16px;display:none;"></div>
+    </div>
+
+    {% if recent_subscriptions %}
+        <div class="glass" style="padding:24px;max-width:520px;margin-top:24px;">
+            <h3 style="margin-top:0;font-size:1rem;">Recent payments</h3>
+            <table class="cart-table">
+                <tbody>
+                {% for s in recent_subscriptions %}
+                    <tr>
+                        <td>
+                            KES {{ s.amount }}
+                            <br>
+                            <span class="badge {% if s.status == 'paid' %}badge-success{% elif s.status == 'failed' %}badge-warning{% else %}badge-muted{% endif %}">
+                                {{ s.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="muted" style="text-align:right">
+                            {{ s.started_at|date:"d M, H:i" }}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     {% endif %}
 </div>
-</div>
+
+{% if not vendor.has_active_subscription %}
+<script>
+(function poll() {
+    fetch('{% url "vendors:subscription_status" %}', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.active) {
+                window.location.reload();
+                return;
+            }
+            if (data.latest_status === 'failed') {
+                const el = document.getElementById('sub-status');
+                el.style.display = 'block';
+                el.innerHTML = '<p class="muted">Payment failed. Please try again.</p>';
+                return;
+            }
+            setTimeout(poll, 4000);
+        })
+        .catch(() => setTimeout(poll, 6000));
+})();
+</script>
+{% endif %}
 {% endblock %}

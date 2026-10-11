@@ -1,11 +1,18 @@
+from decimal import Decimal
+
 from django.contrib import admin
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import (
-    MarketingCampaign, MarketingPayout, MarketingProof,
-    MarketingShare, MarketingView, WithdrawalRequest,
+    MarketingCampaign,
+    MarketingPayout,
+    MarketingProof,
+    MarketingShare,
+    MarketingView,
+    MarketerSubscription,
+    WithdrawalRequest,
 )
 from .views import send_withdrawal_paid_email
 
@@ -40,19 +47,17 @@ class MarketingCampaignAdmin(admin.ModelAdmin):
         ('Schedule', {'fields': ('is_active', 'starts_at', 'ends_at')}),
     )
 
+    @admin.display(boolean=True, description='Live now?')
     def is_live_flag(self, obj):
         return obj.is_live
-    is_live_flag.boolean = True
-    is_live_flag.short_description = 'Live now?'
 
+    @admin.display(description='Sharers')
     def share_count(self, obj):
         return obj.shares.count()
-    share_count.short_description = 'Sharers'
 
+    @admin.display(description='Total views')
     def view_count(self, obj):
-        total = obj.shares.aggregate(s=models.Sum('views'))['s'] or 0
-        return total
-    view_count.short_description = 'Total views'
+        return obj.shares.aggregate(s=models.Sum('views'))['s'] or 0
 
 
 # ======================================================================
@@ -76,32 +81,32 @@ class MarketingProofAdmin(admin.ModelAdmin):
         'status', 'payout_due_at', 'credited_at', 'credited_amount',
         'confirmation_sent_at', 'congrats_sent_at', 'uploaded_at',
     )
-    actions = ['reject_selected']
+    actions = ('reject_selected', 'approve_now')
 
+    @admin.display(description='User')
     def user_link(self, obj):
         return obj.share.user.username
-    user_link.short_description = 'User'
 
+    @admin.display(description='Real link clicks')
     def real_clicks(self, obj):
         return obj.share.views
-    real_clicks.short_description = 'Real link clicks'
 
+    @admin.display(description='Screenshot')
     def screenshot_preview(self, obj):
         if not obj.screenshot:
             return '—'
         return format_html(
-            '<a href="{0}" target="_blank"><img src="{0}" style="max-width:640px"></a>',
+            '<a href="{0}" target="_blank">'
+            '<img src="{0}" style="max-width:640px"></a>',
             obj.screenshot.url,
         )
-    screenshot_preview.short_description = 'Screenshot'
 
     @admin.action(description='Reject selected (deduct any credited amount)')
     def reject_selected(self, request, queryset):
-        from decimal import Decimal
         refunded = Decimal('0.00')
         count = 0
         for proof in queryset.select_related('share__campaign'):
-            if proof.status == 'rejected':
+            if proof.status == MarketingProof.Status.REJECTED:
                 continue
             if proof.credited_amount:
                 MarketingShare.objects.filter(pk=proof.share_id).update(
@@ -120,7 +125,7 @@ class MarketingProofAdmin(admin.ModelAdmin):
                     pass
                 refunded += proof.credited_amount
 
-            proof.status = 'rejected'
+            proof.status = MarketingProof.Status.REJECTED
             proof.save(update_fields=['status'])
             count += 1
 
@@ -129,7 +134,43 @@ class MarketingProofAdmin(admin.ModelAdmin):
             f'{count} proof(s) rejected. KES {refunded} deducted from affected shares.',
         )
 
+    @admin.action(description='Approve selected and credit now (skips the 24h hold)')
+    def approve_now(self, request, queryset):
+        count = 0
+        total = Decimal('0.00')
+        for proof in queryset.filter(status=MarketingProof.Status.PENDING).select_related(
+            'share__campaign'
+        ):
+            amount = proof.reported_views * proof.share.campaign.payout_per_view
+            with transaction.atomic():
+                MarketingShare.objects.filter(pk=proof.share_id).update(
+                    views=models.F('views') + proof.reported_views,
+                    earnings=models.F('earnings') + amount,
+                )
+                payout, _ = MarketingPayout.objects.get_or_create(
+                    user=proof.share.user,
+                    campaign=proof.share.campaign,
+                )
+                MarketingPayout.objects.filter(pk=payout.pk).update(
+                    views=models.F('views') + proof.reported_views,
+                    amount=models.F('amount') + amount,
+                )
+                proof.status = MarketingProof.Status.APPROVED
+                proof.credited_at = timezone.now()
+                proof.credited_amount = amount
+                proof.save(update_fields=['status', 'credited_at', 'credited_amount'])
+            count += 1
+            total += amount
 
+        self.message_user(
+            request,
+            f'{count} proof(s) approved and credited. KES {total} added.',
+        )
+
+
+# ======================================================================
+# Withdrawal requests
+# ======================================================================
 @admin.register(WithdrawalRequest)
 class WithdrawalRequestAdmin(admin.ModelAdmin):
     list_display = (
@@ -144,7 +185,7 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
         'status', 'reviewed_at', 'reviewed_by',
         'paid_at', 'mpesa_receipt', 'admin_note',
     )
-    actions = ['mark_approved', 'mark_paid', 'mark_rejected']
+    actions = ('mark_approved', 'mark_paid', 'mark_rejected')
 
     @admin.action(description='Mark selected as APPROVED (ready to pay)')
     def mark_approved(self, request, queryset):
@@ -166,7 +207,6 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
             wr.save(update_fields=['status', 'paid_at', 'reviewed_at', 'reviewed_by'])
 
             try:
-                from .views import send_withdrawal_paid_email
                 send_withdrawal_paid_email(wr)
             except Exception:
                 pass
@@ -177,8 +217,6 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
 
     @admin.action(description='Mark selected as REJECTED (refund vendor balance)')
     def mark_rejected(self, request, queryset):
-        from django.db import transaction
-
         count = 0
         for wr in queryset.filter(status__in=['pending', 'approved']):
             with transaction.atomic():
@@ -198,10 +236,10 @@ class WithdrawalRequestAdmin(admin.ModelAdmin):
             request,
             f'{count} request(s) rejected. Vendor balances refunded.',
         )
-# ======================================================================
-# Withdrawal requests
-# ======================================================================
 
+
+# ======================================================================
+# Payouts
 # ======================================================================
 @admin.register(MarketingPayout)
 class MarketingPayoutAdmin(admin.ModelAdmin):
@@ -209,7 +247,7 @@ class MarketingPayoutAdmin(admin.ModelAdmin):
                     'requested_at', 'paid_at')
     list_filter = ('status', 'campaign')
     search_fields = ('user__username', 'user__email')
-    actions = ['mark_paid', 'mark_rejected']
+    actions = ('mark_paid', 'mark_rejected')
 
     @admin.action(description='Mark selected payouts as PAID')
     def mark_paid(self, request, queryset):
@@ -238,3 +276,81 @@ class MarketingViewAdmin(admin.ModelAdmin):
     list_display = ('share', 'fingerprint', 'created_at')
     search_fields = ('share__code', 'share__user__username')
     readonly_fields = ('share', 'fingerprint', 'created_at', 'user_agent', 'referer')
+
+
+# ======================================================================
+# Marketer activation (WhatsApp Earn paywall)
+# ======================================================================
+@admin.register(MarketerSubscription)
+class MarketerSubscriptionAdmin(admin.ModelAdmin):
+    list_display = (
+        'user', 'status', 'amount', 'days_left_display',
+        'paid_at', 'expires_at', 'updated_at',
+    )
+    list_filter = ('status',)
+    search_fields = (
+        'user__username', 'user__email',
+        'mpesa_receipt', 'mpesa_checkout_request_id',
+    )
+    raw_id_fields = ('user',)
+    readonly_fields = (
+        'mpesa_checkout_request_id', 'mpesa_receipt',
+        'mpesa_result_code', 'mpesa_result_desc',
+        'created_at', 'updated_at',
+    )
+    ordering = ('-updated_at',)
+    actions = ('activate_30_days', 'deactivate')
+    fieldsets = (
+        (None, {
+            'fields': ('user', 'status', 'amount', 'period_days'),
+        }),
+        ('Period', {
+            'fields': ('paid_at', 'expires_at'),
+        }),
+        ('M-Pesa audit', {
+            'fields': (
+                'mpesa_phone', 'mpesa_checkout_request_id',
+                'mpesa_receipt', 'mpesa_result_code', 'mpesa_result_desc',
+            ),
+            'classes': ('collapse',),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    @admin.display(description='Days left')
+    def days_left_display(self, obj):
+        if not obj.is_active:
+            return format_html('<span style="color:#b00">Expired</span>')
+        days = obj.days_left
+        color = '#2a7' if days > 5 else '#e90'
+        return format_html(
+            '<span style="color:{}">{}d</span>', color, days,
+        )
+
+    @admin.action(description='Activate / extend 30 days')
+    def activate_30_days(self, request, queryset):
+        count = 0
+        for sub in queryset:
+            sub.period_days = 30
+            sub.mark_paid(
+                receipt=sub.mpesa_receipt or 'MANUAL',
+                result_code='0',
+                result_desc='Manually activated by admin',
+            )
+            count += 1
+        self.message_user(
+            request,
+            f'{count} subscription(s) activated. Each got 30 days from '
+            f'its current expiry (or from now if already expired).',
+        )
+
+    @admin.action(description='Deactivate (revoke access)')
+    def deactivate(self, request, queryset):
+        updated = queryset.update(
+            status=MarketerSubscription.Status.FAILED,
+            expires_at=timezone.now(),
+        )
+        self.message_user(request, f'{updated} subscription(s) revoked.')

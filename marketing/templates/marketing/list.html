@@ -13,6 +13,17 @@
         </p>
     </div>
 
+    {# ---- Activation paywall banner (non-admins only) ---- #}
+    {% if user.is_authenticated and not user.is_staff and not marketer_active %}
+        <div class="vendor-banner vendor-banner-warning" style="margin-bottom:24px;">
+            <strong>Activation required.</strong>
+            Pay KES {{ activation_fee }} to start generating share links.
+            <a href="{% url 'marketing:subscribe' %}" class="btn btn-small" style="margin-left:12px;">
+                Activate now
+            </a>
+        </div>
+    {% endif %}
+
     {% if not campaign %}
         <div class="form-card">
             <h3>No active campaign</h3>
@@ -49,8 +60,7 @@
                         <span class="muted">
                             <strong>{{ campaign.payout_per_view }}</strong> KES per view credited
                         </span>
-                        <a href="{% if campaign.image %}{{ campaign.image.url }}{% else %}{{ campaign.video.url }}{% endif %}"
-                           download
+                        <a href="{% url 'marketing:download_media' campaign.id %}"
                            class="btn btn-outline btn-small">
                             Download media
                         </a>
@@ -70,6 +80,19 @@
                         Please <a href="{% url 'account_login' %}?next={{ request.path }}">log in</a>
                         to generate your share link and start earning.
                     </p>
+
+                {% elif not marketer_active %}
+                    {# Logged in, not activated, not admin — no share yet or otherwise. #}
+                    <div class="marketing-empty">
+                        <p>
+                            Activate your WhatsApp Earn account for
+                            <strong>KES {{ activation_fee }}</strong> to start generating
+                            share links and earning on every view.
+                        </p>
+                        <a href="{% url 'marketing:subscribe' %}" class="btn btn-full">
+                            Activate for KES {{ activation_fee }}
+                        </a>
+                    </div>
 
                 {% elif not share %}
                     <div class="marketing-empty">

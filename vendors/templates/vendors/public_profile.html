@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ vendor.business_name }} — Entrep - Shop{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <div class="vendor-public-head glass">
+        <span class="eyebrow">Shop</span>
+        <h1>{{ vendor.business_name }}</h1>
+        {% if vendor.description %}
+            <p class="lede">{{ vendor.description }}</p>
+        {% endif %}
+        <p class="muted" style="margin-top:8px;">
+            {{ vendor.product_count }} product{{ vendor.product_count|pluralize }} listed
+        </p>
+    </div>
+
+    {% if products %}
+        <div class="product-grid">
+            {% include "store/_product_grid.html" with products=products page_obj=page_obj %}
+        </div>
+    {% else %}
+        <div class="glass" style="padding:32px;text-align:center;">
+            <p class="muted">This vendor hasn't published any products yet.</p>
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}

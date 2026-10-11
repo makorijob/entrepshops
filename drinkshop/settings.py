@@ -232,7 +232,7 @@ LOGOUT_REDIRECT_URL = 'store:home'
 # (not just email) since existing accounts/migrations use it; allauth will
 # ask for one on signup unless you flip ACCOUNT_USERNAME_REQUIRED off.
 # ---------------------------------------------------------------------------
-ACCOUNT_EMAIL_VERIFICATION = os.environ.get('ACCOUNT_EMAIL_VERIFICATION', 'optional')  # 'none', 'optional', or 'mandatory'
+ACCOUNT_EMAIL_VERIFICATION = os.environ.get('ACCOUNT_EMAIL_VERIFICATION', 'mandatory')  # 'none', 'optional', or 'mandatory'
 ACCOUNT_LOGIN_METHODS = {'username', 'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_UNIQUE_EMAIL = True
@@ -300,7 +300,28 @@ DISALLOW_ALCOHOL_DELIVERY = os.environ.get('DISALLOW_ALCOHOL_DELIVERY', 'True') 
 # Referral bonus (KES) credited to BOTH the referrer and the new signup
 # when someone joins via a ?ref= link. Set to 0 to disable bonuses while
 # keeping referral tracking itself active.
-REFERRAL_BONUS_KES = int(os.environ.get('REFERRAL_BONUS_KES') or '100')
+# Referral bonuses (KES) — two-stage payout.
+#
+# Stage 1 (email): paid to BOTH sides the moment the referred user
+# verifies their email address. This proves the account is real
+# (not a fake signup) without requiring a purchase.
+#
+# Stage 2 (first order): paid to BOTH sides when the referred user
+# completes their first paid order.
+#
+# Set either to 0 to disable that stage while keeping referral tracking
+# itself active. If a referred user never verifies their email, stage 1
+# never pays out and stage 2 is also skipped (see
+# Profile.release_first_order_bonus_if_due).
+
+REFERRAL_EMAIL_BONUS_KES = int(os.environ.get('REFERRAL_EMAIL_BONUS_KES') or '1000')
+REFERRAL_FIRST_ORDER_BONUS_KES = int(
+    os.environ.get('REFERRAL_FIRST_ORDER_BONUS_KES') or '1500'
+)
+
+# Legacy — kept so any older references don't crash. Not used by the
+# new two-stage payout logic.
+REFERRAL_BONUS_KES = int(os.environ.get('REFERRAL_BONUS_KES') or '0')
 
 # ---------------------------------------------------------------------------
 # M-Pesa Daraja API settings (Safaricom)
@@ -382,7 +403,10 @@ GROQ_VISION_MODEL = os.environ.get(
     'GROQ_VISION_MODEL', 'qwen/qwen3.8-27b'
 )
 
-
+# Marketer activation fee (KES) — paid monthly to keep generating share
+# links and earning. Existing shares and withdrawals are never gated.
+MARKETER_ACTIVATION_FEE_KES = int(os.environ.get('MARKETER_ACTIVATION_FEE_KES') or '1000')
+MARKETER_ACTIVATION_DAYS = int(os.environ.get('MARKETER_ACTIVATION_DAYS') or '30')
 # ---------------------------------------------------------------------------
 # Google Gemini — AI product suggestions for vendors
 # Get a free API key at https://aistudio.google.com/app/apikey
@@ -391,3 +415,4 @@ GROQ_VISION_MODEL = os.environ.get(
 # xAI Grok — AI product suggestions for vendors
 # Get an API key at https://console.x.ai
 
+ACCOUNT_ADAPTER = 'accounts.adapter.AccountAdapter'

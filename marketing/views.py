@@ -5,7 +5,6 @@ from decimal import Decimal
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.db import transaction
@@ -17,11 +16,16 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import (
-    MarketingCampaign, MarketingPayout, MarketingProof,
-    MarketingShare, MarketingView, WithdrawalRequest, withdrawable_balance,
+    MarketingCampaign,
+    MarketingPayout,
+    MarketingProof,
+    MarketingShare,
+    MarketingView,
+    MarketerSubscription,
+    WithdrawalRequest,
+    has_active_marketing_subscription,
+    withdrawable_balance,
 )
-
-User = get_user_model()
 
 
 # ======================================================================
@@ -34,6 +38,11 @@ def _fingerprint(request, campaign):
         str(campaign.id),
     ])
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _marketer_is_exempt(user):
+    """Admins bypass the activation paywall entirely."""
+    return bool(user.is_authenticated and user.is_staff)
 
 
 class ProofUploadForm(forms.ModelForm):
@@ -96,9 +105,19 @@ def campaign_list(request):
     if request.user.is_authenticated:
         share = MarketingShare.objects.filter(user=request.user, campaign=campaign).first()
 
+    sub = None
+    if request.user.is_authenticated:
+        sub = getattr(request.user, 'marketer_subscription', None)
+
     return render(request, 'marketing/list.html', {
         'campaign': campaign,
         'share': share,
+        'marketer_sub': sub,
+        'marketer_active': (
+            _marketer_is_exempt(request.user)
+            or has_active_marketing_subscription(request.user)
+        ),
+        'activation_fee': settings.MARKETER_ACTIVATION_FEE_KES,
     })
 
 
@@ -109,6 +128,15 @@ def create_share(request, campaign_id):
     if not campaign.is_live:
         messages.error(request, 'This campaign is no longer active.')
         return redirect('marketing:list')
+
+    # ---- Paywall ----
+    if not _marketer_is_exempt(request.user) and not has_active_marketing_subscription(request.user):
+        messages.error(
+            request,
+            f'Activate your WhatsApp Earn account for KES '
+            f'{settings.MARKETER_ACTIVATION_FEE_KES} to start sharing.'
+        )
+        return redirect('marketing:subscribe')
 
     share, created = MarketingShare.objects.get_or_create(
         user=request.user, campaign=campaign,
@@ -153,6 +181,99 @@ def redirect_view(request, code):
             pass
 
     return HttpResponseRedirect(campaign.landing_url)
+
+
+# ======================================================================
+# Marketer activation
+# ======================================================================
+@login_required
+@require_GET
+def subscribe(request):
+    """Activation page — pitch + pay button + current status."""
+    sub, _ = MarketerSubscription.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'amount': settings.MARKETER_ACTIVATION_FEE_KES,
+            'period_days': settings.MARKETER_ACTIVATION_DAYS,
+        },
+    )
+
+    return render(request, 'marketing/subscribe.html', {
+        'sub': sub,
+        'activation_fee': settings.MARKETER_ACTIVATION_FEE_KES,
+        'activation_days': settings.MARKETER_ACTIVATION_DAYS,
+        'is_active': sub.is_active or _marketer_is_exempt(request.user),
+    })
+
+
+@login_required
+@require_POST
+def start_activation_payment(request):
+    """Fire an STK push for the activation fee."""
+    from payments.mpesa import MpesaError, normalize_phone, stk_push
+
+    phone = (request.POST.get('phone_number') or '').strip()
+    if not phone:
+        messages.error(request, 'Enter the M-Pesa number to charge.')
+        return redirect('marketing:subscribe')
+
+    sub, _ = MarketerSubscription.objects.get_or_create(
+        user=request.user,
+        defaults={
+            'amount': settings.MARKETER_ACTIVATION_FEE_KES,
+            'period_days': settings.MARKETER_ACTIVATION_DAYS,
+        },
+    )
+
+    # Reset to a fresh PENDING attempt — user may be re-paying after expiry.
+    sub.status = MarketerSubscription.Status.PENDING
+    sub.amount = settings.MARKETER_ACTIVATION_FEE_KES
+    sub.period_days = settings.MARKETER_ACTIVATION_DAYS
+    sub.mpesa_phone = normalize_phone(phone)
+    sub.mpesa_checkout_request_id = ''
+    sub.mpesa_receipt = ''
+    sub.mpesa_result_code = ''
+    sub.mpesa_result_desc = ''
+    sub.save()
+
+    try:
+        response = stk_push(
+            phone_number=phone,
+            amount=settings.MARKETER_ACTIVATION_FEE_KES,
+            account_reference=f'MKTRSUB{sub.id}',
+            transaction_desc='WhatsApp Earn activation',
+        )
+    except MpesaError as exc:
+        sub.mark_failed(code='init', desc=str(exc))
+        messages.error(request, f'Could not start the payment: {exc}')
+        return redirect('marketing:subscribe')
+
+    checkout_id = response.get('CheckoutRequestID', '')
+    if checkout_id:
+        sub.mpesa_checkout_request_id = checkout_id
+        sub.save(update_fields=['mpesa_checkout_request_id'])
+
+    messages.success(
+        request,
+        'An M-Pesa prompt has been sent to your phone. Enter your PIN to '
+        'activate your account — this takes a few seconds.'
+    )
+    return redirect('marketing:subscribe')
+
+
+@login_required
+@require_GET
+def activation_status(request):
+    """Polled by the subscribe page JS."""
+    sub = getattr(request.user, 'marketer_subscription', None)
+    active = _marketer_is_exempt(request.user) or (sub and sub.is_active)
+
+    return JsonResponse({
+        'active': bool(active),
+        'days_left': sub.days_left if sub else 0,
+        'expires_at': sub.expires_at.isoformat() if (sub and sub.expires_at) else None,
+        'latest_status': sub.status if sub else None,
+    })
 
 
 # ======================================================================
@@ -207,6 +328,8 @@ def my_earnings(request):
         .aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
     )
 
+    sub = getattr(request.user, 'marketer_subscription', None)
+
     return render(request, 'marketing/earnings.html', {
         'shares': shares,
         'credited_views': credited_views,
@@ -219,6 +342,12 @@ def my_earnings(request):
         'balance': withdrawable_balance(request.user),
         'in_progress_total': in_progress_total,
         'recent_withdrawals': recent_withdrawals,
+        'marketer_sub': sub,
+        'marketer_active': (
+            _marketer_is_exempt(request.user)
+            or has_active_marketing_subscription(request.user)
+        ),
+        'activation_fee': settings.MARKETER_ACTIVATION_FEE_KES,
     })
 
 
@@ -228,6 +357,15 @@ def my_earnings(request):
 @login_required
 def upload_proof(request, share_id):
     share = get_object_or_404(MarketingShare, id=share_id, user=request.user)
+
+    # ---- Paywall ----
+    if not _marketer_is_exempt(request.user) and not has_active_marketing_subscription(request.user):
+        messages.error(
+            request,
+            f'Activate your WhatsApp Earn account for KES '
+            f'{settings.MARKETER_ACTIVATION_FEE_KES} to upload proofs.'
+        )
+        return redirect('marketing:subscribe')
 
     if request.method == 'POST':
         form = ProofUploadForm(request.POST, request.FILES)
@@ -369,7 +507,7 @@ def process_due_proofs():
 
 
 # ======================================================================
-# Withdrawals
+# Withdrawals (never gated by the activation fee)
 # ======================================================================
 @login_required
 def request_withdrawal(request):
@@ -394,6 +532,8 @@ def request_withdrawal(request):
         form = WithdrawalForm(request.POST, max_amount=balance)
         if form.is_valid():
             with transaction.atomic():
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
                 locked_user = User.objects.select_for_update().get(pk=request.user.pk)
                 current_balance = withdrawable_balance(locked_user)
                 amount = form.cleaned_data['amount']
@@ -465,3 +605,53 @@ def process_proofs_endpoint(request):
         'processed': result['processed'],
         'credits': str(result['credits']),
     })
+
+
+import requests
+from urllib.parse import quote
+from django.http import HttpResponse, Http404
+from django.utils.text import slugify
+
+
+@require_GET
+def download_campaign_media(request, campaign_id):
+    """
+    Proxy-download a campaign's image or video so the browser saves the
+    file with a friendly name instead of navigating to Cloudinary. The
+    HTML `download` attribute is ignored cross-origin, so we stream the
+    file through our own domain and set Content-Disposition manually.
+    """
+    campaign = get_object_or_404(MarketingCampaign, id=campaign_id)
+
+    if campaign.media_type == MarketingCampaign.MediaType.VIDEO and campaign.video:
+        source_url = campaign.video.url
+        ext = 'mp4'
+        default_type = 'video/mp4'
+    elif campaign.image:
+        source_url = campaign.image.url
+        from pathlib import PurePosixPath
+        path_ext = PurePosixPath(source_url.split('?')[0]).suffix.lstrip('.').lower()
+        ext = path_ext or 'jpg'
+        default_type = 'image/jpeg'
+    else:
+        raise Http404('This campaign has no media to download.')
+
+    try:
+        upstream = requests.get(source_url, stream=True, timeout=30)
+        upstream.raise_for_status()
+    except requests.RequestException as exc:
+        raise Http404(f'Could not fetch media: {exc}')
+
+    base = slugify(campaign.title)[:60] or 'campaign'
+    filename = f'{base}-{campaign.id}.{ext}'
+
+    response = HttpResponse(
+        upstream.content,
+        content_type=upstream.headers.get('Content-Type', default_type),
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="{filename}"; '
+        f"filename*=UTF-8''{quote(filename)}"
+    )
+    response['Content-Length'] = len(upstream.content)
+    return response

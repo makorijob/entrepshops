@@ -1,10 +1,10 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
-from django.conf import settings
 from django.db import models, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -18,9 +18,11 @@ from store.models import Category, Department, Product
 
 from . import ai
 from .forms import VendorProductForm, VendorProfileForm, VendorWithdrawalForm
-from .models import Vendor
+from .models import Vendor, VendorSubscription
 
-TRIAL_DAYS = 30
+
+SUBSCRIPTION_FEE_KES = getattr(settings, 'VENDOR_SUBSCRIPTION_FEE_KES', 5000)
+SUBSCRIPTION_DAYS = getattr(settings, 'VENDOR_SUBSCRIPTION_DAYS', 30)
 
 
 # ======================================================================
@@ -29,20 +31,28 @@ TRIAL_DAYS = 30
 @login_required
 @require_GET
 def become_vendor(request):
+    """The pre-vendor pitch. If the user already has a Vendor row, send
+    them onward: dashboard if paid, subscribe page if not."""
     if hasattr(request.user, 'vendor_profile'):
-        return redirect('vendors:dashboard')
+        vendor = request.user.vendor_profile
+        if vendor.has_active_subscription or vendor.on_trial:
+            return redirect('vendors:dashboard')
+        return redirect('vendors:subscribe')
 
     return render(request, 'vendors/become_vendor.html', {
-        'trial_days': TRIAL_DAYS,
+        'subscription_fee': SUBSCRIPTION_FEE_KES,
+        'subscription_days': SUBSCRIPTION_DAYS,
     })
 
 
 @login_required
 @require_POST
-def start_trial(request):
+def start_signup(request):
+    """Create the Vendor row (unpaid) and send the user to the payment
+    page. No trial, no free listing — the subscription must be paid
+    before any product can be added."""
     if hasattr(request.user, 'vendor_profile'):
-        messages.info(request, 'You already have a vendor account.')
-        return redirect('vendors:dashboard')
+        return redirect('vendors:subscribe')
 
     business_name = (request.POST.get('business_name') or '').strip()
     if not business_name:
@@ -51,37 +61,112 @@ def start_trial(request):
 
     phone_number = (request.POST.get('phone_number') or '').strip()
 
-    now = timezone.now()
-    vendor = Vendor.objects.create(
+    Vendor.objects.create(
         user=request.user,
         business_name=business_name[:150],
         phone_number=phone_number[:20],
-        trial_started_at=now,
-        trial_ends_at=now + timedelta(days=TRIAL_DAYS),
+    )
+
+    messages.info(
+        request,
+        'Business created. Complete your subscription to start listing products.'
+    )
+    return redirect('vendors:subscribe')
+
+
+@login_required
+@require_GET
+def subscribe(request):
+    """Subscription payment page."""
+    vendor = get_object_or_404(Vendor, user=request.user)
+
+    return render(request, 'vendors/subscribe.html', {
+        'vendor': vendor,
+        'subscription_fee': SUBSCRIPTION_FEE_KES,
+        'subscription_days': SUBSCRIPTION_DAYS,
+        'recent_subscriptions': vendor.subscriptions.all()[:5],
+    })
+
+
+@login_required
+@require_POST
+def start_subscription_payment(request):
+    """Initiate an M-Pesa STK push for the vendor subscription fee.
+    Creates a PENDING VendorSubscription and records the checkout id.
+    The M-Pesa callback flips it to PAID."""
+    from payments.mpesa import MpesaError, normalize_phone, stk_push
+
+    vendor = get_object_or_404(Vendor, user=request.user)
+
+    phone = (request.POST.get('phone_number') or '').strip()
+    if not phone:
+        messages.error(request, 'Enter the M-Pesa number to charge.')
+        return redirect('vendors:subscribe')
+
+    subscription = VendorSubscription.objects.create(
+        vendor=vendor,
+        amount=SUBSCRIPTION_FEE_KES,
+        period_days=SUBSCRIPTION_DAYS,
+        mpesa_phone=normalize_phone(phone),
     )
 
     try:
-        send_welcome_email(vendor)
-    except Exception:
-        pass
+        response = stk_push(
+            phone_number=phone,
+            amount=SUBSCRIPTION_FEE_KES,
+            account_reference=f'VENDORSUB{subscription.id}',
+            transaction_desc=f'Vendor subscription ({SUBSCRIPTION_DAYS}d)',
+        )
+    except MpesaError as exc:
+        subscription.mark_failed(code='init', desc=str(exc))
+        messages.error(request, f'Could not start the payment: {exc}')
+        return redirect('vendors:subscribe')
+
+    checkout_id = response.get('CheckoutRequestID', '')
+    if checkout_id:
+        subscription.mpesa_checkout_request_id = checkout_id
+        subscription.save(update_fields=['mpesa_checkout_request_id'])
 
     messages.success(
         request,
-        f'Your 30-day free trial has started. '
-        f'You can list products until {vendor.trial_ends_at:%d %b %Y}.'
+        'An M-Pesa prompt has been sent to your phone. Enter your PIN to '
+        'complete the payment. Your subscription will activate automatically.'
     )
-    return redirect('vendors:dashboard')
+    return redirect('vendors:subscribe')
+
+
+@login_required
+@require_GET
+def subscription_status(request):
+    """Polled by the subscribe page JS to check if payment landed."""
+    vendor = get_object_or_404(Vendor, user=request.user)
+    latest = vendor.subscriptions.first()
+
+    return JsonResponse({
+        'active': vendor.has_active_subscription,
+        'expires_at': (
+            vendor.subscription_expires_at.isoformat()
+            if vendor.subscription_expires_at else None
+        ),
+        'days_left': vendor.subscription_days_left,
+        'latest_status': latest.status if latest else None,
+        'latest_paid_at': (
+            latest.paid_at.isoformat() if latest and latest.paid_at else None
+        ),
+    })
 
 
 def send_welcome_email(vendor):
+    """Kept for compatibility — fired after the first successful
+    subscription payment rather than at signup."""
     user = vendor.user
     if not user.email:
         return
-    subject = 'Welcome to Entrep Shop — your 30-day free trial has started'
+    subject = 'Welcome to Entrep Shop — your vendor subscription is active'
     body = render_to_string('vendors/emails/welcome.txt', {
         'user': user,
         'vendor': vendor,
-        'trial_days': TRIAL_DAYS,
+        'subscription_days': SUBSCRIPTION_DAYS,
         'site_name': 'Entrep - Shop',
     })
     send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
@@ -99,6 +184,7 @@ def dashboard(request):
     return render(request, 'vendors/dashboard.html', {
         'vendor': vendor,
         'products': products,
+        'subscription_fee': SUBSCRIPTION_FEE_KES,
     })
 
 
@@ -125,6 +211,36 @@ def edit_profile(request):
     return render(request, 'vendors/edit_profile.html', {
         'vendor': vendor,
         'form': form,
+    })
+
+
+# ======================================================================
+# Public vendor shop (no login required)
+# ======================================================================
+@require_GET
+def public_profile(request, vendor_id):
+    """Public-facing vendor shop page. Shows the vendor's business name,
+    description, and every live product they've listed."""
+    from django.core.paginator import Paginator
+
+    vendor = get_object_or_404(Vendor, id=vendor_id, is_approved=True)
+
+    products = (
+        vendor.products
+        .filter(is_approved=True, is_active=True)
+        .exclude(availability=Product.Availability.DISCONTINUED)
+        .select_related('category', 'department')
+        .prefetch_related('variants', 'images')
+        .order_by('-created_at')
+    )
+
+    paginator = Paginator(products, 24)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'vendors/public_profile.html', {
+        'vendor': vendor,
+        'products': page_obj.object_list,
+        'page_obj': page_obj,
     })
 
 
@@ -243,15 +359,26 @@ def product_list(request):
 
 @login_required
 def product_create(request):
+    import logging
+    log = logging.getLogger(__name__)
+
     vendor = get_object_or_404(Vendor, user=request.user)
 
-    if not vendor.can_list_products:
-        messages.error(
-            request,
-            'Your free trial has ended. Subscribe to add new products. '
-            'Your existing products stay live.'
-        )
-        return redirect('vendors:dashboard')
+    # Admins bypass both the payment and the approval gates.
+    if not request.user.is_staff:
+        if not vendor.has_active_subscription:
+            messages.error(
+                request,
+                'An active subscription is required to add products. '
+                f'Subscribe for KES {SUBSCRIPTION_FEE_KES} to start selling.'
+            )
+            return redirect('vendors:subscribe')
+        if not vendor.is_approved:
+            messages.error(
+                request,
+                'Your vendor account is suspended. Contact support.'
+            )
+            return redirect('vendors:dashboard')
 
     if request.method == 'POST':
         form = VendorProductForm(request.POST, request.FILES, vendor=vendor)
@@ -262,7 +389,11 @@ def product_create(request):
             if not product.department_id and product.category_id:
                 product.department = product.category.department
 
-            product.is_approved = not vendor.requires_review
+            # Admins auto-approve. Vendors follow the first-3-reviewed rule.
+            if request.user.is_staff:
+                product.is_approved = True
+            else:
+                product.is_approved = not vendor.requires_review
 
             base_slug = slugify(product.name)[:150] or 'product'
             slug = base_slug
@@ -283,6 +414,16 @@ def product_create(request):
                     f'first 3 products — you\'ll get an email when it\'s approved.'
                 )
             return redirect('vendors:product_list')
+
+        # Form is invalid — log every error so it shows in the terminal.
+        log.warning('=' * 60)
+        log.warning('Product form INVALID for vendor=%s user=%s', vendor.pk, request.user.pk)
+        log.warning('POST data keys: %s', list(request.POST.keys()))
+        log.warning('FILES keys: %s', list(request.FILES.keys()))
+        for field, errs in form.errors.items():
+            log.warning('  FIELD %r -> %s', field, [str(e) for e in errs])
+        log.warning('Non-field errors: %s', form.non_field_errors())
+        log.warning('=' * 60)
     else:
         form = VendorProductForm(vendor=vendor)
 
@@ -357,7 +498,7 @@ def ai_suggest(request):
                 'error': 'The AI could not generate a suggestion right now. '
                          'Please fill in the fields manually.',
             },
-            status=502,
+            status=200,
         )
 
     dept_name = result['department'][:100]

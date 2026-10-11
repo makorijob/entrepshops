@@ -7,30 +7,36 @@
         <span class="eyebrow">Sell with us</span>
         <h1>Start selling on Entrep Shop</h1>
         <p class="lede">
-            List your products free for 30 days. You keep 100% of every sale.
-            We handle delivery. After your trial, subscribe for
-            KES {{ VENDOR_SUBSCRIPTION_FEE_KES|default:"5,000" }} a month to keep adding products.
+            List your products to shoppers across Kenya. You keep 100% of every sale.
+            We handle delivery. Subscribe for KES {{ subscription_fee }} per
+            {{ subscription_days }} days to start listing.
         </p>
     </div>
 
     <div class="vendor-signup-layout">
         <section class="glass vendor-signup-card">
-            <h2>Your free 30-day trial</h2>
+            <h2>Your subscription</h2>
             <ul class="vendor-benefits">
                 <li>Unlimited product listings</li>
                 <li>You set your own prices</li>
                 <li>We deliver to your customers</li>
-                <li>You keep 100% of each sale during trial</li>
+                <li>You keep 100% of each sale</li>
                 <li>Withdraw your earnings to M-Pesa any time</li>
             </ul>
 
             {% if user.is_authenticated %}
                 {% if user.vendor_profile %}
-                    <a href="{% url 'vendors:dashboard' %}" class="btn btn-full">
-                        Go to your dashboard
-                    </a>
+                    {% if user.vendor_profile.has_active_subscription %}
+                        <a href="{% url 'vendors:dashboard' %}" class="btn btn-full">
+                            Go to your dashboard
+                        </a>
+                    {% else %}
+                        <a href="{% url 'vendors:subscribe' %}" class="btn btn-full">
+                            Complete your subscription — KES {{ subscription_fee }}
+                        </a>
+                    {% endif %}
                 {% else %}
-                    <form method="post" action="{% url 'vendors:start_trial' %}" class="auth-form">
+                    <form method="post" action="{% url 'vendors:start_signup' %}" class="auth-form">
                         {% csrf_token %}
 
                         <p>
@@ -47,14 +53,14 @@
                         </p>
 
                         <button type="submit" class="btn btn-full">
-                            Start my free 30-day trial
+                            Continue to payment — KES {{ subscription_fee }}
                         </button>
                     </form>
                 {% endif %}
             {% else %}
                 <p class="muted">
                     <a href="{% url 'account_login' %}?next={% url 'vendors:become_vendor' %}">Log in</a>
-                    or <a href="{% url 'account_signup' %}">register</a> to start your trial.
+                    or <a href="{% url 'account_signup' %}">register</a> to start selling.
                 </p>
             {% endif %}
         </section>
@@ -62,12 +68,13 @@
         <aside class="glass vendor-info">
             <span class="eyebrow">How it works</span>
             <ol class="vendor-steps">
-                <li>Start your free trial — no card, no deposit.</li>
+                <li>Fill in your business details.</li>
+                <li>Pay KES {{ subscription_fee }} via M-Pesa — activates instantly.</li>
                 <li>List your products. We review your first 3 within 24 hours.</li>
                 <li>Customers order from your listings.</li>
                 <li>We deliver. You get credited automatically.</li>
-                <li>Withdraw your earnings to M-Pesa.</li>
-                <li>After 30 days, subscribe for KES 5,000/month to keep listing.</li>
+                <li>Withdraw your earnings to M-Pesa any time.</li>
+                <li>Renew your subscription every {{ subscription_days }} days to keep listing.</li>
             </ol>
         </aside>
     </div>

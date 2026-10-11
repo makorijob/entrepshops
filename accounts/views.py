@@ -63,7 +63,13 @@ def spin_page(request):
     today_spin = DailySpin.objects.filter(user=request.user, spin_date=timezone.localdate()).first()
     prizes = SpinPrize.objects.filter(is_active=True)
     prizes_json = [
-        {'id': p.id, 'label': p.label, 'weight': p.weight, 'image': p.image.url if p.image else None}
+        {
+            'id': p.id,
+            'label': p.label,
+            'weight': p.weight,
+            'image': p.image.url if p.image else None,
+            'color': p.color,
+        }
         for p in prizes
     ]
     wheel_theme = SpinWheelTheme.get_active()

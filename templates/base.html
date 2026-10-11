@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Entrep - Shop{% endblock %}</title>
     <link rel="icon" href="{% static 'images/favicon.png' %}" sizes="any">
@@ -36,9 +37,12 @@
             </a>
 
             <nav class="main-nav">
-                <a href="{% url 'store:home' %}">Shop</a>
-                <a href="{% url 'careers:list' %}">Careers</a>
-                {% if user.is_authenticated %}
+    <a href="{% url 'store:home' %}">Shop</a>
+    {% if not user.is_authenticated or not user.vendor_profile %}
+        <a href="{% url 'vendors:become_vendor' %}">Sell on Entrep</a>
+    {% endif %}
+    <a href="{% url 'careers:list' %}">Careers</a>
+    {% if user.is_authenticated %}
                     {% if user.vendor_profile %}
                         <a href="{% url 'vendors:dashboard' %}"><svg><use href="#icon-gift"/></svg>My Shop</a>
                     {% else %}

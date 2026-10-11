@@ -41,6 +41,15 @@
             <h4 class="product-title">{{ product.name }}</h4>
         </a>
 
+        {% if product.vendor %}
+            <p class="product-vendor">
+                by
+                <a href="{% url 'vendors:public_profile' product.vendor.id %}">
+                    {{ product.vendor.business_name }}
+                </a>
+            </p>
+        {% endif %}
+
         <div class="product-meta-row">
             {% with rating=product.average_rating %}
                 {% if rating.1 %}

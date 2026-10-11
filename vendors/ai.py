@@ -94,54 +94,53 @@ def _groq_key():
 # ---------------------------------------------------------------------------
 # Provider: Gemini
 # ---------------------------------------------------------------------------
-
 def _call_gemini(prompt, image_file, timeout):
     """
-    One attempt against Google Gemini. Returns raw response text.
-    Raises on any failure (network, auth, quota, empty).
+    One attempt against Google Gemini using the new google-genai SDK.
+    Returns raw response text. Raises on any failure.
     """
     try:
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
     except ImportError:
-        raise RuntimeError('google-generativeai not installed')
+        raise RuntimeError('google-genai not installed')
 
     api_key = _gemini_key()
     if not api_key:
         raise RuntimeError('GEMINI_API_KEY not configured')
 
-    genai.configure(api_key=api_key)
-    # gemini-3.8-flash is the current free-tier model.
-    # Older IDs (gemini-2.0-flash, gemini-1.5-flash) have been retired.
-    model_name = getattr(settings, 'GEMINI_MODEL', '') or 'gemini-3.8-flash'
-    model = genai.GenerativeModel(model_name)
+    # New SDK: create a client object (no more genai.configure()).
+    client = genai.Client(api_key=api_key)
 
-    # Gemini accepts text + inline image parts.
-    parts = [prompt]
+    model_name = getattr(settings, 'GEMINI_MODEL', '') or 'gemini-3.8-flash'
+
+    # Build contents — image + text if an image was supplied.
+    contents = [prompt]
     if image_file:
         try:
             image_file.seek(0)
             image_bytes = image_file.read()
             mime_type = getattr(image_file, 'content_type', 'image/jpeg') or 'image/jpeg'
-            parts.append({'mime_type': mime_type, 'data': image_bytes})
+            contents.append(
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            )
         except Exception:
             log.exception('Could not read uploaded image for Gemini; text only.')
 
-    response = model.generate_content(
-        parts,
-        generation_config={
-            'temperature': 0.4,
-            'max_output_tokens': 800,
-            'response_mime_type': 'application/json',
-        },
-        request_options={'timeout': timeout},
+    response = client.models.generate_content(
+        model=model_name,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            temperature=0.4,
+            max_output_tokens=800,
+            response_mime_type='application/json',
+        ),
     )
 
     text = getattr(response, 'text', None)
     if not text:
         raise RuntimeError('Gemini returned empty response')
     return text
-
-
 # ---------------------------------------------------------------------------
 # Provider: Groq
 # ---------------------------------------------------------------------------

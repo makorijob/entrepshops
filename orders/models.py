@@ -117,7 +117,7 @@ class Order(models.Model):
 
         profile = getattr(self.user, 'profile', None)
         if profile:
-            profile.release_referral_bonus_if_due()
+            profile.release_first_order_bonus_if_due()
 
     def assign_rider(self, rider):
         """Assign a rider and, if the order is only just paid, bump it into

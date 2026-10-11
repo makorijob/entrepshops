@@ -9,6 +9,8 @@
 </div>
 
 <div class="profile-layout">
+
+    {# ---------- Profile card ---------- #}
     <div class="glass profile-card">
         <div class="avatar-row">
             {% if profile.avatar %}
@@ -30,6 +32,7 @@
         </form>
     </div>
 
+    {# ---------- Wallet card ---------- #}
     <div class="glass profile-card">
         <span class="eyebrow">Wallet</span>
         <h3 style="margin:4px 0 16px">KES {{ profile.wallet_balance }}</h3>
@@ -49,29 +52,46 @@
                 <p class="muted" style="font-size:0.8rem;margin-top:6px">Reach KES {{ min_withdrawal }} to unlock withdrawals.</p>
             {% endif %}
         </form>
+    </div>
 
-        {% if recent_withdrawals %}
-            <h4 style="margin:20px 0 8px;font-size:0.85rem;color:var(--text-mute);text-transform:uppercase;letter-spacing:.04em">Withdrawal history</h4>
+    {# ---------- Lifetime totals ---------- #}
+    <div class="glass profile-card">
+        <span class="eyebrow">Lifetime</span>
+        <h3 style="margin:4px 0 16px">Wallet summary</h3>
+
+        <div class="lifetime-grid">
+            <div class="lifetime-stat">
+                <span class="lifetime-stat-label">Total earned</span>
+                <span class="lifetime-stat-value positive">+KES {{ lifetime_earned }}</span>
+            </div>
+            <div class="lifetime-stat">
+                <span class="lifetime-stat-label">Total withdrawn</span>
+                <span class="lifetime-stat-value negative">−KES {{ lifetime_spent }}</span>
+            </div>
+            <div class="lifetime-stat">
+                <span class="lifetime-stat-label">Current balance</span>
+                <span class="lifetime-stat-value">KES {{ lifetime_balance }}</span>
+            </div>
+        </div>
+    </div>
+
+    {# ---------- Breakdown by source ---------- #}
+    <div class="glass profile-card">
+        <span class="eyebrow">Breakdown</span>
+        <h3 style="margin:4px 0 16px">By source</h3>
+
+        {% if breakdown %}
             <table class="cart-table">
                 <tbody>
-                {% for w in recent_withdrawals %}
+                {% for row in breakdown %}
                     <tr>
-                        <td>KES {{ w.amount }} → {{ w.phone_number }}<br><span class="badge {% if w.status == 'success' %}badge-success{% elif w.status == 'failed' %}badge-warning{% else %}badge-muted{% endif %}">{{ w.get_status_display }}</span></td>
-                        <td class="muted" style="text-align:right">{{ w.created_at|date:"d M, H:i" }}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
-
-        {% if recent_transactions %}
-            <h4 style="margin:20px 0 8px;font-size:0.85rem;color:var(--text-mute);text-transform:uppercase;letter-spacing:.04em">Recent activity</h4>
-            <table class="cart-table">
-                <tbody>
-                {% for txn in recent_transactions %}
-                    <tr>
-                        <td>{{ txn.get_kind_display }}<br><span class="muted">{{ txn.description }}</span></td>
-                        <td style="text-align:right">{% if txn.amount >= 0 %}+{% endif %}KES {{ txn.amount }}</td>
+                        <td>
+                            {{ row.label }}
+                            <br><span class="muted" style="font-size:0.8rem">{{ row.count }} transaction{{ row.count|pluralize }}</span>
+                        </td>
+                        <td style="text-align:right" class="{% if row.is_debit %}wallet-debit{% else %}wallet-credit{% endif %}">
+                            {% if row.is_debit %}−{% else %}+{% endif %}KES {{ row.amount }}
+                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -81,6 +101,77 @@
         {% endif %}
     </div>
 
+    {# ---------- Withdrawal history ---------- #}
+    {% if recent_withdrawals %}
+    <div class="glass profile-card">
+        <span class="eyebrow">Withdrawals</span>
+        <h3 style="margin:4px 0 16px">Recent withdrawals</h3>
+        <table class="cart-table">
+            <tbody>
+            {% for w in recent_withdrawals %}
+                <tr>
+                    <td>
+                        KES {{ w.amount }} → {{ w.phone_number }}
+                        <br><span class="badge {% if w.status == 'success' %}badge-success{% elif w.status == 'failed' %}badge-warning{% else %}badge-muted{% endif %}">{{ w.get_status_display }}</span>
+                    </td>
+                    <td class="muted" style="text-align:right">{{ w.created_at|date:"d M, H:i" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {# ---------- Full transaction history ---------- #}
+    <div class="glass profile-card" style="grid-column: 1 / -1;">
+        <span class="eyebrow">Activity</span>
+        <h3 style="margin:4px 0 16px">All wallet transactions</h3>
+
+        {% if transactions_page.object_list %}
+            <table class="cart-table">
+                <thead>
+                    <tr>
+                        <th style="text-align:left">Type</th>
+                        <th style="text-align:left">Description</th>
+                        <th style="text-align:right">Amount</th>
+                        <th style="text-align:right">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for txn in transactions_page %}
+                    <tr>
+                        <td>{{ txn.get_kind_display }}</td>
+                        <td class="muted">{{ txn.description|default:"—" }}</td>
+                        <td style="text-align:right" class="{% if txn.amount < 0 %}wallet-debit{% else %}wallet-credit{% endif %}">
+                            {% if txn.amount >= 0 %}+{% endif %}KES {{ txn.amount }}
+                        </td>
+                        <td class="muted" style="text-align:right">{{ txn.created_at|date:"d M Y, H:i" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+
+            {% if transactions_page.has_other_pages %}
+                <div class="pagination">
+                    {% if transactions_page.has_previous %}
+                        <a class="pagination-link" href="?page={{ transactions_page.previous_page_number }}">← Previous</a>
+                    {% else %}
+                        <span class="pagination-link is-disabled">← Previous</span>
+                    {% endif %}
+                    <span class="pagination-info">Page {{ transactions_page.number }} of {{ transactions_page.paginator.num_pages }}</span>
+                    {% if transactions_page.has_next %}
+                        <a class="pagination-link" href="?page={{ transactions_page.next_page_number }}">Next →</a>
+                    {% else %}
+                        <span class="pagination-link is-disabled">Next →</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% else %}
+            <p class="muted">No wallet transactions yet.</p>
+        {% endif %}
+    </div>
+
+    {# ---------- Refer & earn ---------- #}
     <div class="glass profile-card">
         <span class="eyebrow">Refer &amp; earn</span>
         <h3 style="margin:4px 0 10px">{{ profile.referral_count }} friend{{ profile.referral_count|pluralize }} referred</h3>
@@ -91,6 +182,7 @@
         </div>
     </div>
 
+    {# ---------- Daily spin ---------- #}
     <div class="glass profile-card">
         <span class="eyebrow">Daily spin</span>
         {% if today_spin %}
@@ -101,6 +193,7 @@
         {% endif %}
         <a href="{% url 'accounts:spin' %}" class="btn btn-small btn-orange">Go to spin wheel</a>
     </div>
+
 </div>
 </div>
 {% endblock %}

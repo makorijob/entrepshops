@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Activate WhatsApp Earn — Entrep - Shop{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-head">
+        <span class="eyebrow">WhatsApp Earn</span>
+        <h1>Activate your account</h1>
+        <p class="lede">
+            Post today's product on WhatsApp Status, earn per view.
+            Activation costs <strong>KES {{ activation_fee }}</strong>
+            and lasts <strong>{{ activation_days }} days</strong>.
+        </p>
+    </div>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li class="message {{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div class="glass" style="max-width:520px;padding:32px;">
+        {% if is_active %}
+            <h3 style="margin-top:0">You're active</h3>
+            <p class="muted">
+                {% if sub.days_left %}
+                    {{ sub.days_left }} day{{ sub.days_left|pluralize }} left.
+                    Expires {{ sub.expires_at|date:"d M Y" }}.
+                {% endif %}
+            </p>
+            <a href="{% url 'marketing:list' %}" class="btn">
+                Go to today's campaign
+            </a>
+
+        {% else %}
+            <h3 style="margin-top:0">Pay to start earning</h3>
+            <p class="muted">
+                KES {{ activation_fee }} activates your account for
+                {{ activation_days }} days. You'll earn per view on every
+                campaign you share, and can withdraw any time.
+            </p>
+
+            <form method="post" action="{% url 'marketing:start_activation_payment' %}" class="auth-form">
+                {% csrf_token %}
+                <label>M-Pesa phone number
+                    <input type="text" name="phone_number" required
+                           placeholder="2547XXXXXXXX"
+                           value="{{ sub.mpesa_phone }}">
+                </label>
+                <button type="submit" class="btn btn-full">
+                    Pay KES {{ activation_fee }} via M-Pesa
+                </button>
+            </form>
+
+            <div id="activation-status" style="margin-top:16px;display:none;"></div>
+        {% endif %}
+    </div>
+</div>
+
+{% if not is_active %}
+<script>
+(function poll() {
+    fetch('{% url "marketing:activation_status" %}', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.active) {
+                window.location.reload();
+                return;
+            }
+            if (data.latest_status === 'failed') {
+                const el = document.getElementById('activation-status');
+                el.style.display = 'block';
+                el.innerHTML = '<p class="muted">Payment failed. Please try again.</p>';
+                return;
+            }
+            setTimeout(poll, 4000);
+        })
+        .catch(() => setTimeout(poll, 6000));
+})();
+</script>
+{% endif %}
+{% endblock %}

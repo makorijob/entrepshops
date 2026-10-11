@@ -143,12 +143,7 @@ main .container { padding-top: 28px; }
 .message.warning { background: rgba(232, 185, 60, 0.12); border-color: rgba(232, 185, 60, 0.35); color: var(--gold); }
 
 /* =========================================================================
-   Hero posters
-/* =========================================================================
-   Hero posters — split layout (copy left, product right)
-   ========================================================================= */
-  /* =========================================================================
-   Hero posters — split layout, sharp corners
+   Hero posters — split layout, image blends into background
    ========================================================================= */
 
 .hero-poster-stack {
@@ -178,17 +173,6 @@ main .container { padding-top: 28px; }
     isolation: isolate;
 }
 
-.hero-poster::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background: radial-gradient(80% 70% at 50% 55%,
-        transparent 40%,
-        rgba(8, 7, 10, 0.55) 100%);
-    pointer-events: none;
-}
-
 .hero-poster.is-active {
     display: grid;
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
@@ -216,43 +200,94 @@ main .container { padding-top: 28px; }
         var(--void-2);
 }
 
+/* ---- Image side: no card, no border, fades into the poster on the left ---- */
 .hero-poster-media {
     position: relative;
     z-index: 2;
     grid-column: 2;
     grid-row: 1;
-    justify-self: end;
-    align-self: center;
+    justify-self: stretch;
+    align-self: stretch;
     width: 100%;
-    max-width: 420px;
-    aspect-ratio: 4 / 5;
-    border-radius: 0;
+    height: 100%;
+    min-height: 480px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border-glass-strong);
-    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+    background: transparent;
+    border: 0;
+    box-shadow: none;
 }
+
 .hero-poster-media img,
 .hero-poster-media video {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center;
     display: block;
-    border-radius: 0;
+    border: 0;
+    margin: 0;
+    max-width: none;
+    max-height: none;
 }
 
+
+
+/* Dark scrim over the entire image — hides white backgrounds */
+.hero-poster-media::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg,
+            var(--void-2) 0%,
+            rgba(12, 11, 16, 0.98) 8%,
+            rgba(12, 11, 16, 0.85) 22%,
+            rgba(12, 11, 16, 0.55) 45%,
+            rgba(12, 11, 16, 0.35) 100%),
+        radial-gradient(120% 120% at 100% 50%,
+            transparent 0%,
+            rgba(12, 11, 16, 0.15) 70%,
+            rgba(12, 11, 16, 0.55) 100%);
+}
+
+.hero-poster-media::after { display: none; }
+
+/* Optional bottom fade so the image blends toward the caption area */
+.hero-poster-media::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background: linear-gradient(
+        180deg,
+        rgba(12, 11, 16, 0) 60%,
+        rgba(12, 11, 16, 0.25) 85%,
+        rgba(12, 11, 16, 0.55) 100%
+    );
+}
+
+/* The image now covers the full poster area, so the copy needs to sit on top of it */
 .hero-poster-body {
     position: relative;
-    z-index: 3;
+    z-index: 4;
     grid-column: 1;
     grid-row: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: flex-start;
-    padding: 0;
+    padding: 48px 48px 48px 56px;
     max-width: 520px;
+}
+
+/* Remove the padding from the parent since the media + body handle it */
+.hero-poster.is-active {
+    padding: 0;
 }
 
 .hero-poster-kicker {
@@ -372,13 +407,15 @@ main .container { padding-top: 28px; }
 
 .hero-poster-arrow {
     position: absolute;
-    z-index: 6;
+    z-index: 8;
     top: 20px;
     width: 38px;
     height: 38px;
     border-radius: 0;
     border: 1px solid var(--border-glass-strong);
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(8, 7, 10, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     color: var(--text);
     display: inline-flex;
     align-items: center;
@@ -386,13 +423,13 @@ main .container { padding-top: 28px; }
     cursor: pointer;
     transition: background .2s var(--ease);
 }
-.hero-poster-arrow:hover { background: rgba(255, 255, 255, 0.12); }
+.hero-poster-arrow:hover { background: rgba(8, 7, 10, 0.8); }
 .hero-poster-arrow--prev { right: 72px; }
 .hero-poster-arrow--next { right: 20px; }
 
 .hero-poster-dots {
     position: absolute;
-    z-index: 6;
+    z-index: 8;
     bottom: 24px;
     right: 24px;
     display: flex;
@@ -420,21 +457,41 @@ main .container { padding-top: 28px; }
 
 @media (max-width: 780px) {
     .hero-poster-stack { padding: 0 12px; margin: 12px auto 28px; }
+
     .hero-poster.is-active {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto;
-        padding: 28px 22px 24px;
-        gap: 20px;
+        grid-template-rows: 1fr;
+        padding: 0;
+        gap: 0;
         min-height: 0;
     }
+
     .hero-poster-media {
         grid-column: 1;
-        grid-row: 2;
-        justify-self: stretch;
-        max-width: 100%;
-        aspect-ratio: 16 / 10;
+        grid-row: 1;
+        min-height: 440px;
     }
-    .hero-poster-body { grid-column: 1; grid-row: 1; }
+
+    /* On mobile the fade should come from the bottom (text sits on top of image) */
+    .hero-poster-media::before {
+        background: linear-gradient(
+            180deg,
+            rgba(12, 11, 16, 0.55) 0%,
+            rgba(12, 11, 16, 0.35) 30%,
+            rgba(12, 11, 16, 0.85) 70%,
+            rgba(12, 11, 16, 0.98) 100%
+        );
+    }
+    .hero-poster-media::after { display: none; }
+
+    .hero-poster-body {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: end;
+        padding: 32px 22px 28px;
+        max-width: 100%;
+    }
+
     .hero-poster-headline { font-size: 1.55rem; max-width: 20ch; }
     .hero-poster-sub { font-size: 0.88rem; margin-bottom: 20px; }
     .hero-poster-cta { padding: 12px 20px; font-size: 0.86rem; }
@@ -442,7 +499,8 @@ main .container { padding-top: 28px; }
     .hero-poster-arrow { top: 14px; width: 34px; height: 34px; }
     .hero-poster-arrow--prev { right: 60px; }
     .hero-poster-arrow--next { right: 14px; }
-       }  
+}
+
 /* =========================================================================
    Marquee
    ========================================================================= */
@@ -513,10 +571,44 @@ main .container { padding-top: 28px; }
    Promo posters
    ========================================================================= */
 .promo-poster-track { position: relative; margin-bottom: 60px; }
-.promo-poster { display: none; position: relative; overflow: hidden; border: 1px solid var(--border-glass); border-radius: var(--radius); background: var(--void-2); text-decoration: none; color: var(--text); width: 100%; height: 420px; max-width: 720px; margin: 0 auto; }
+.promo-poster {
+    display: none;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius);
+    background: var(--void-2);
+    text-decoration: none;
+    color: var(--text);
+    width: 100%;
+    height: 420px;
+    /* max-width removed — poster fills the full container */
+    margin: 0;
+}
 .promo-poster.is-active { display: block; }
-.promo-poster-media { position: absolute; inset: 0; z-index: 0; }
-.promo-poster-media img, .promo-poster-media video { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
+.promo-poster.is-active { display: block; }
+.promo-poster-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+.promo-poster-media img,
+.promo-poster-media video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    border-radius: 0;
+    margin: 0;
+    max-width: none;
+    max-height: none;
+}
 .promo-poster-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgba(8, 7, 10, 0.9) 0%, rgba(8, 7, 10, 0.5) 55%, rgba(8, 7, 10, 0.1) 100%); }
 .promo-poster[data-tone="green"] .promo-poster-scrim { background: linear-gradient(0deg, rgba(26, 19, 10, 0.94) 0%, rgba(26, 19, 10, 0.5) 55%, rgba(8, 7, 10, 0.1) 100%); }
 .promo-poster[data-tone="orange"] .promo-poster-scrim { background: linear-gradient(0deg, rgba(28, 17, 8, 0.94) 0%, rgba(28, 17, 8, 0.5) 55%, rgba(8, 7, 10, 0.1) 100%); }
@@ -1008,6 +1100,10 @@ main .container { padding-top: 28px; }
 .vendor-form-card .auth-form { max-width: 100%; }
 .vendor-form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
 
+/* Public vendor profile page */
+.vendor-public-head { padding: 32px 28px; margin-bottom: 24px; }
+.vendor-public-head h1 { margin: 4px 0 8px; font-size: clamp(1.5rem, 3vw, 2rem); }
+
 /* =========================================================================
    Shopify-style product form
    ========================================================================= */
@@ -1211,6 +1307,9 @@ main .container { padding-top: 28px; }
     .lightbox-caption { left: 16px; right: 16px; bottom: 16px; font-size: 0.78rem; text-align: center; }
     .lightbox-counter { top: 16px; left: 16px; font-size: 0.72rem; }
     .lightbox-toolbar { top: 12px; right: 12px; gap: 4px; }
+
+    .vendor-public-head { padding: 22px 18px; }
+    .vendor-public-head h1 { font-size: 1.3rem; }
 }
 
 /* =========================================================================
@@ -1239,4 +1338,24 @@ main .container { padding-top: 28px; }
     .marketing-stat strong { font-size: 1.25rem; }
     .share-input { flex-direction: column; align-items: stretch; }
     .share-input .btn { width: 100%; }
+}
+
+/* =========================================================================
+   Vendor — product card attribution (used on homepage + vendor pages)
+   ========================================================================= */
+.product-vendor {
+    font-size: 0.78rem;
+    color: var(--text-mute);
+    margin: -4px 0 6px;
+    line-height: 1.3;
+}
+.product-vendor a {
+    color: var(--text-dim);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--text-mute);
+    transition: color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.product-vendor a:hover {
+    color: var(--green-bright);
+    border-bottom-color: var(--green-bright);
 }
