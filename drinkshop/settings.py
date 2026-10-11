@@ -131,17 +131,23 @@ WSGI_APPLICATION = 'drinkshop.wsgi.application'
 # ---------------------------------------------------------------------------
 import dj_database_url
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip().strip('"').strip("'")
 
-if DATABASE_URL:
-    # Postgres / MySQL / Neon / Supabase etc. via DATABASE_URL.
-    #
-    # conn_max_age:
-    #   - Local dev / self-hosted: 600 (keep connections alive for
-    #     the persistent process — much faster page-to-page).
-    #   - Vercel serverless: 0 (release the connection immediately
-    #     after each request — otherwise the session pooler's
-    #     15-slot limit is exhausted within seconds).
+# Vercel sometimes saves env vars with a stray leading ':' or quote —
+# the resulting string starts with '://' and dj_database_url chokes on it.
+# Validate before parsing.
+_valid_schemes = (
+    'postgres://', 'postgresql://', 'pgsql://',
+    'mysql://', 'mysql2://',
+    'sqlite://', 'sqlite3://',
+)
+
+
+def _is_valid_db_url(u):
+    return bool(u) and any(u.startswith(s) for s in _valid_schemes)
+
+
+if _is_valid_db_url(DATABASE_URL):
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
@@ -151,9 +157,8 @@ if DATABASE_URL:
         )
     }
 
-    # Supabase's transaction pooler (port 6543) does NOT support
-    # prepared statements or server-side cursors. Detect the port and
-    # disable both — otherwise psycopg will try them and fail.
+    # Supabase transaction pooler (port 6543) needs prepared statements
+    # and server-side cursors disabled.
     try:
         if str(DATABASES['default'].get('PORT')) == '6543':
             DATABASES['default'].setdefault('OPTIONS', {})
@@ -163,13 +168,28 @@ if DATABASE_URL:
         pass
 
 else:
-    # Local dev without a DATABASE_URL — SQLite.
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+    # DATABASE_URL missing or malformed — fall back to individual PG vars
+    # if Vercel's Postgres integration set them, else SQLite.
+    if os.environ.get('PGHOST') or os.environ.get('POSTGRES_HOST'):
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.environ.get('PGDATABASE', os.environ.get('POSTGRES_DATABASE', 'postgres')),
+                'USER': os.environ.get('PGUSER', os.environ.get('POSTGRES_USER', 'postgres')),
+                'PASSWORD': os.environ.get('PGPASSWORD', os.environ.get('POSTGRES_PASSWORD', '')),
+                'HOST': os.environ.get('PGHOST', os.environ.get('POSTGRES_HOST', '')),
+                'PORT': os.environ.get('PGPORT', os.environ.get('POSTGRES_PORT', '5432')),
+                'CONN_MAX_AGE': 0 if os.environ.get('VERCEL') else 600,
+                'OPTIONS': {'sslmode': 'require'} if not DEBUG else {},
+            }
         }
-    }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 # ---------------------------------------------------------------------------
 # Password validation
 # ---------------------------------------------------------------------------
