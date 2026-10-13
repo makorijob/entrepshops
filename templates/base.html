@@ -13,6 +13,20 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+    {# Runs before first paint — sets data-theme so there's no flash of the wrong theme. #}
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('theme');           // 'dark' | 'light' | null
+                var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+                var theme = saved || (prefersLight ? 'light' : 'dark');
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
     {% block extra_head %}{% endblock %}
 </head>
 <body{% if current_department %} data-dept="{{ current_department.theme }}"{% endif %}{% if active_background %} style="--site-bg-image:url('{{ active_background.image.url }}');--scrim-alpha:0.35"{% endif %}>
@@ -37,16 +51,17 @@
             </a>
 
             <nav class="main-nav">
-    <a href="{% url 'store:home' %}">Shop</a>
-    {% if not user.is_authenticated or not user.vendor_profile %}
-        <a href="{% url 'vendors:become_vendor' %}">Sell on Entrep</a>
-    {% endif %}
-    <a href="{% url 'careers:list' %}">Careers</a>
-    {% if user.is_authenticated %}
+                <a href="{% url 'store:home' %}">Shop</a>
+
+                {% if not user.is_authenticated or not user.vendor_profile %}
+                    <a href="{% url 'vendors:become_vendor' %}">Sell on Entrep</a>
+                {% endif %}
+
+                <a href="{% url 'careers:list' %}">Careers</a>
+
+                {% if user.is_authenticated %}
                     {% if user.vendor_profile %}
                         <a href="{% url 'vendors:dashboard' %}"><svg><use href="#icon-gift"/></svg>My Shop</a>
-                    {% else %}
-                        <a href="{% url 'vendors:become_vendor' %}">Sell with us</a>
                     {% endif %}
                     <a href="{% url 'orders:order_history' %}"><svg><use href="#icon-order"/></svg>Orders</a>
                     <a href="{% url 'store:address_list' %}"><svg><use href="#icon-pin"/></svg>Addresses</a>
@@ -67,10 +82,20 @@
                     </a>
                     <a href="{% url 'account_logout' %}">Logout</a>
                 {% else %}
-                    <a href="{% url 'vendors:become_vendor' %}">Sell with us</a>
                     <a href="{% url 'account_login' %}">Login</a>
                     <a href="{% url 'account_signup' %}">Register</a>
                 {% endif %}
+
+                <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle theme" title="Toggle dark/light">
+                    <svg class="theme-toggle-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+                    </svg>
+                    <svg class="theme-toggle-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+
                 <a href="{% url 'store:cart_detail' %}" class="cart-link">
                     <svg><use href="#icon-cart"/></svg>
                     Cart{% if cart|length %}<span class="count">{{ cart|length }}</span>{% endif %}
@@ -182,6 +207,29 @@
                 if (button) { button.disabled = false; button.textContent = originalText; }
             }
         });
+
+        // ---------- Theme toggle ----------
+        (function () {
+            const root = document.documentElement;
+            const btn = document.getElementById('theme-toggle');
+            if (!btn) return;
+
+            btn.addEventListener('click', function () {
+                const current = root.getAttribute('data-theme') || 'dark';
+                const next = current === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                try { localStorage.setItem('theme', next); } catch (e) {}
+            });
+
+            // Follow OS changes only if the user hasn't picked manually.
+            const mq = window.matchMedia('(prefers-color-scheme: light)');
+            mq.addEventListener('change', function (e) {
+                try {
+                    if (localStorage.getItem('theme')) return;
+                } catch (err) { /* ignore */ }
+                root.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+            });
+        })();
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
