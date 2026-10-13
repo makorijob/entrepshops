@@ -1359,3 +1359,110 @@ main .container { padding-top: 28px; }
     color: var(--green-bright);
     border-bottom-color: var(--green-bright);
 }
+
+
+/* =========================================================================
+   Light theme — override the dark tokens when [data-theme="light"]
+   ========================================================================= */
+
+[data-theme="light"] {
+    --void: #F7F5F1;
+    --void-2: #FFFFFF;
+    --panel: rgba(255, 255, 255, 0.7);
+    --panel-solid: #FFFFFF;
+    --panel-strong: rgba(255, 255, 255, 0.9);
+    --border-glass: rgba(0, 0, 0, 0.08);
+    --border-glass-strong: rgba(0, 0, 0, 0.16);
+
+    --green: #B0761E;
+    --green-bright: #C88A2E;
+    --green-deep: #F0E0C4;
+    --orange: #C25A1C;
+    --orange-deep: #E0A87A;
+    --gold: #B58A1B;
+    --gold-soft: #D9B855;
+
+    --text: #1A1613;
+    --text-dim: #4A4038;
+    --text-mute: #7A6E62;
+
+    --danger: #C23734;
+    --success: #22875B;
+}
+
+/* Hide any radial glow "body::after" aura in light mode — it looks odd on white */
+[data-theme="light"] body::after {
+    background:
+        radial-gradient(60% 45% at 12% 8%, color-mix(in srgb, var(--green) 10%, transparent), transparent 60%),
+        radial-gradient(50% 40% at 92% 18%, color-mix(in srgb, var(--orange) 8%, transparent), transparent 60%),
+        rgba(247, 245, 241, var(--scrim-alpha, 0.35));
+}
+
+/* Soften the ambient background image in light mode */
+[data-theme="light"] body::before {
+    filter: blur(1px) saturate(0.75) brightness(1.15);
+    opacity: 0.4;
+}
+
+/* Header — light glass */
+[data-theme="light"] .site-header {
+    background: rgba(247, 245, 241, 0.85);
+    border-bottom-color: var(--border-glass);
+}
+
+/* Drop shadows look lighter on white — soften them */
+[data-theme="light"] .btn { box-shadow: 0 8px 24px -10px rgba(176, 118, 30, 0.35); }
+[data-theme="light"] .hero-poster-cta,
+[data-theme="light"] .promo-poster-cta { box-shadow: 0 8px 20px -8px rgba(194, 90, 28, 0.35); }
+
+/* Card borders need to be slightly stronger on light backgrounds */
+[data-theme="light"] .glass,
+[data-theme="light"] .product-card,
+[data-theme="light"] .offer-card,
+[data-theme="light"] .job-card,
+[data-theme="light"] .rider-card,
+[data-theme="light"] .trust-badge {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Toast in light mode */
+[data-theme="light"] .toast {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text);
+}
+
+/* =========================================================================
+   Theme toggle button
+   ========================================================================= */
+
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--border-glass-strong);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: background 0.2s var(--ease), color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+}
+[data-theme="light"] .theme-toggle:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+.theme-toggle:active { transform: scale(0.94); }
+
+/* Show sun when dark theme (click → go light), moon when light theme (click → go dark) */
+[data-theme="dark"] .theme-toggle-moon,
+[data-theme="light"] .theme-toggle-sun,
+html:not([data-theme="light"]) .theme-toggle-moon { display: none; }
+[data-theme="light"] .theme-toggle-moon { display: inline-flex; }
+
+/* If no data-theme attribute yet, default to sun (dark mode) */
+html:not([data-theme]) .theme-toggle-sun { display: inline-flex; }
