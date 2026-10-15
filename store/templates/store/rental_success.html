@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Booking received — Entrep - Shop{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <div class="page-head">
+        <span class="eyebrow">Booking</span>
+        <h1>
+            {% if rental.status == 'confirmed' %}
+                Booking confirmed
+            {% elif rental.status == 'failed' %}
+                Payment failed
+            {% else %}
+                Waiting for payment
+            {% endif %}
+        </h1>
+    </div>
+
+    <div class="glass rental-success">
+        <div class="rental-status" id="rental-status" data-status="{{ rental.status }}">
+            {% if rental.status == 'confirmed' %}
+                <p class="badge badge-success">Paid — {{ rental.mpesa_receipt }}</p>
+                <p class="muted">
+                    Your booking for <strong>{{ rental.product.name }}</strong>
+                    from <strong>{{ rental.pickup_date|date:"d M Y" }}</strong>
+                    to <strong>{{ rental.return_date|date:"d M Y" }}</strong>
+                    is confirmed. We'll deliver to the address you provided.
+                </p>
+            {% elif rental.status == 'failed' %}
+                <p class="badge badge-warning">Payment could not be completed</p>
+                <p class="muted">
+                    We didn't receive the M-Pesa payment for this booking.
+                    <a href="{% url 'store:rental_checkout' rental.product.id %}">Try again</a>
+                    or contact support if the issue persists.
+                </p>
+            {% else %}
+                <p class="muted">
+                    We sent an M-Pesa prompt to your phone. Enter your PIN to
+                    confirm the booking — this page updates automatically.
+                </p>
+                <div class="waiting-pulse"></div>
+            {% endif %}
+        </div>
+
+        <h3 class="rental-summary-heading">Booking summary</h3>
+        <table class="cart-table rental-summary-table">
+            <tbody>
+                <tr>
+                    <td>Vehicle</td>
+                    <td>{{ rental.product.name }}</td>
+                </tr>
+                <tr>
+                    <td>Booking ID</td>
+                    <td><code>#{{ rental.id }}</code></td>
+                </tr>
+                <tr>
+                    <td>Pickup</td>
+                    <td>{{ rental.pickup_date|date:"d M Y" }}</td>
+                </tr>
+                <tr>
+                    <td>Return</td>
+                    <td>{{ rental.return_date|date:"d M Y" }}</td>
+                </tr>
+                <tr>
+                    <td>Days</td>
+                    <td>{{ rental.total_days }}</td>
+                </tr>
+                <tr>
+                    <td>Rate per day</td>
+                    <td>KES {{ rental.daily_rate|floatformat:0 }}</td>
+                </tr>
+                <tr>
+                    <td>Subtotal</td>
+                    <td>KES {{ rental.subtotal|floatformat:0 }}</td>
+                </tr>
+                <tr>
+                    <td>Refundable deposit</td>
+                    <td>KES {{ rental.rental_deposit|floatformat:0 }}</td>
+                </tr>
+                <tr class="rental-summary-total-row">
+                    <td><strong>Total</strong></td>
+                    <td><strong>KES {{ rental.total_amount|floatformat:0 }}</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="rental-success-actions">
+            <a href="{% url 'store:my_rentals' %}" class="btn btn-outline btn-small">All my rentals</a>
+            <a href="{% url 'store:home' %}" class="btn btn-small">Back to shop</a>
+        </div>
+    </div>
+</div>
+
+{% if rental.status == 'pending' %}
+<script>
+(function () {
+    const statusEl = document.getElementById('rental-status');
+    const url = "{% url 'store:rental_status' rental.id %}";
+
+    function poll() {
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.paid || data.failed) {
+                    window.location.reload();
+                    return;
+                }
+                setTimeout(poll, 3000);
+            })
+            .catch(() => setTimeout(poll, 5000));
+    }
+
+    poll();
+})();
+</script>
+{% endif %}
+{% endblock %}
