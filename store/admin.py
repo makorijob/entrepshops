@@ -9,7 +9,7 @@ from django.utils.html import format_html
 from .models import (
     BackgroundImage, BundleOffer, Category, DeliveryAddress, DeliveryZone,
     Department, Product, ProductImage, ProductOffer, ProductVariant,
-    Promotion, SiteLogo, SupplierSource,
+    Promotion, SiteLogo, SupplierSource, VehicleRental,
 )
 
 
@@ -58,11 +58,11 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = (
         'name', 'department', 'category', 'vendor', 'price_range_display',
         'stock', 'availability', 'is_active', 'is_approved',
-        'is_featured', 'hero_slide_preview',
+        'is_featured', 'is_rentable', 'hero_slide_preview',
     )
     list_filter = (
         'department', 'category', 'vendor', 'availability', 'is_alcoholic',
-        'is_active', 'is_approved', 'is_featured',
+        'is_active', 'is_approved', 'is_featured', 'is_rentable',
     )
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
@@ -77,11 +77,9 @@ class ProductAdmin(admin.ModelAdmin):
         }),
         ('Availability', {
             'fields': ('availability', 'is_active'),
-            'description': 'Controls the badge and whether customers can add to cart.',
         }),
-        ('Fallback pricing & stock — overridden by variants', {
+        ('Fallback pricing & stock', {
             'fields': ('price', 'compare_at_price', 'volume_ml', 'stock', 'is_alcoholic'),
-            'description': 'Only used if this product has no variants. Add variants below to set per-size pricing.',
         }),
         ('Wholesale / bulk pricing', {
             'fields': ('wholesale_quantity_threshold', 'wholesale_price'),
@@ -89,16 +87,25 @@ class ProductAdmin(admin.ModelAdmin):
         }),
         ('Homepage hero slider', {
             'fields': ('is_featured', 'hero_tagline', 'hero_headline', 'hero_description'),
-            'description': (
-                'Tick "is featured" to put this product in the rotating hero on '
-                'the homepage. Tagline, headline and description all fall back '
-                'to sensible defaults if left blank.'
+            'classes': ('collapse',),
+        }),
+        ('Rental / hire', {
+            'fields': (
+                'is_rentable', 'daily_rate', 'rental_deposit',
+                'minimum_days', 'rental_pickup_notes',
             ),
+            'description': (
+                'Tick "is rentable" to convert this listing into a hire product. '
+                'The product page will show a booking form instead of "Add to cart".'
+            ),
+            'classes': ('collapse',),
         }),
     )
 
     @admin.display(description='Price')
     def price_range_display(self, obj):
+        if obj.is_rentable and obj.daily_rate:
+            return f'KES {obj.daily_rate}/day'
         lo, hi = obj.price_range
         if lo is None or hi is None:
             return '—'
@@ -116,7 +123,7 @@ class ProductAdmin(admin.ModelAdmin):
             tagline, headline,
         )
 
-    @admin.action(description='Approve selected products (make visible in the shop)')
+    @admin.action(description='Approve selected products')
     def approve_products(self, request, queryset):
         updated = queryset.update(is_approved=True)
         self.message_user(request, f'{updated} product(s) approved.')
@@ -141,18 +148,10 @@ class BundleOfferAdmin(admin.ModelAdmin):
 
 
 # ======================================================================
-# Site chrome — Promotions (with media-type validation)
+# Site chrome
 # ======================================================================
 
 class PromotionAdminForm(forms.ModelForm):
-    """
-    Validate that the right file goes in the right field.
-
-    Cloudinary rejects non-image uploads to ImageField with a generic
-    "Invalid image file" 500, so we catch the mistake at form-validation
-    time and show the admin a clear red error under the offending field.
-    """
-
     IMAGE_EXTS = ('jpg', 'jpeg', 'png', 'webp', 'gif', 'avif')
     VIDEO_EXTS = ('mp4', 'webm', 'mov', 'm4v')
 
@@ -166,26 +165,21 @@ class PromotionAdminForm(forms.ModelForm):
 
     def clean_image(self):
         image = self.cleaned_data.get('image')
-        # Only enforce if a *new* file was uploaded (not just the existing
-        # stored file re-attached). `image` is either a fresh UploadedFile
-        # or the existing FieldFile — check for the "new" flag.
-        if image and hasattr(image, 'file'):
+        if image and getattr(image, '_committed', True) is False:
             ext = self._ext(getattr(image, 'name', '') or '')
             if ext and ext not in self.IMAGE_EXTS:
                 raise forms.ValidationError(
-                    f'"{image.name}" is not an image. '
-                    f'Use the Video field for MP4 / WebM files.'
+                    f'"{image.name}" is not an image. Use the Video field for MP4/WebM.'
                 )
         return image
 
     def clean_video(self):
         video = self.cleaned_data.get('video')
-        if video and hasattr(video, 'file'):
+        if video and getattr(video, '_committed', True) is False:
             ext = self._ext(getattr(video, 'name', '') or '')
             if ext and ext not in self.VIDEO_EXTS:
                 raise forms.ValidationError(
-                    f'"{video.name}" is not a supported video. '
-                    f'Use MP4 or WebM. If it\'s an image, put it in the Image field.'
+                    f'"{video.name}" is not a supported video. Use MP4 or WebM.'
                 )
         return video
 
@@ -198,33 +192,16 @@ class PromotionAdminForm(forms.ModelForm):
 
         if media_type == Promotion.MediaType.VIDEO:
             if image:
-                self.add_error(
-                    'image',
-                    'Media type is "Video" — clear the Image field. '
-                    'Videos must go in the Video field.'
-                )
+                self.add_error('image', 'Media type is "Video" — clear the Image field.')
             if not (video or video_url):
-                self.add_error(
-                    'video',
-                    'Media type is "Video" — upload an MP4 or provide a Video URL.'
-                )
+                self.add_error('video', 'Media type is "Video" — upload an MP4 or provide a Video URL.')
         elif media_type == Promotion.MediaType.IMAGE:
             if video:
-                self.add_error(
-                    'video',
-                    'Media type is "Image" — clear the Video field. '
-                    'Images must go in the Image field.'
-                )
+                self.add_error('video', 'Media type is "Image" — clear the Video field.')
             if video_url:
-                self.add_error(
-                    'video_url',
-                    'Media type is "Image" — clear the Video URL.'
-                )
+                self.add_error('video_url', 'Media type is "Image" — clear the Video URL.')
             if not image:
-                self.add_error(
-                    'image',
-                    'Media type is "Image" — upload an image.'
-                )
+                self.add_error('image', 'Media type is "Image" — upload an image.')
 
         return cleaned
 
@@ -235,31 +212,7 @@ class PromotionAdmin(admin.ModelAdmin):
     list_display = ('title', 'kicker', 'tone', 'media_type', 'is_active', 'sort_order')
     list_filter = ('tone', 'media_type', 'is_active')
     search_fields = ('title', 'kicker')
-    fieldsets = (
-        (None, {
-            'fields': ('kicker', 'title', 'description', 'voucher_code', 'tone'),
-        }),
-        ('Media', {
-            'fields': ('media_type', 'image', 'video', 'video_url'),
-            'description': (
-                '<strong>Image</strong> takes JPG / PNG / WebP / GIF. '
-                '<strong>Video</strong> takes MP4 / WebM (muted autoplay, so keep '
-                'it short). Set <em>Media type</em> to match whichever field '
-                'you filled in — the other one should be left blank.'
-            ),
-        }),
-        ('Call to action', {
-            'fields': ('cta_label', 'cta_url'),
-        }),
-        ('Visibility', {
-            'fields': ('is_active', 'sort_order'),
-        }),
-    )
 
-
-# ======================================================================
-# Site chrome — logo & background
-# ======================================================================
 
 @admin.register(SiteLogo)
 class SiteLogoAdmin(admin.ModelAdmin):
@@ -293,7 +246,7 @@ class DeliveryAddressAdmin(admin.ModelAdmin):
 
 
 # ======================================================================
-# Supplier sources (Shopify import)
+# Supplier sources
 # ======================================================================
 
 @admin.register(SupplierSource)
@@ -311,16 +264,8 @@ class SupplierSourceAdmin(admin.ModelAdmin):
         (None, {'fields': ('name', 'provider', 'is_active')}),
         ('Shopify connection', {
             'fields': ('store_domain', 'api_version', 'client_id', 'client_secret'),
-            'description': (
-                'Get Client ID and Client Secret from the Shopify Dev Dashboard → '
-                'your app → App settings. The importer exchanges them for a '
-                'short-lived access token automatically.'
-            ),
         }),
-        ('Mapping', {
-            'fields': ('default_department',),
-            'description': 'Where imported products land if they don\'t match an existing category.'
-        }),
+        ('Mapping', {'fields': ('default_department',)}),
         ('Behaviour', {'fields': ('auto_approve',)}),
         ('Status', {'fields': ('last_synced_at', 'last_status', 'last_error')}),
     )
@@ -383,3 +328,92 @@ class SupplierSourceAdmin(admin.ModelAdmin):
             source.save(update_fields=['last_status', 'last_error'])
             messages.error(request, f'Import failed: {exc}')
         return redirect('admin:store_suppliersource_changelist')
+
+
+# ======================================================================
+# Vehicle rentals
+# ======================================================================
+
+@admin.register(VehicleRental)
+class VehicleRentalAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'product', 'user', 'pickup_date', 'return_date', 'total_days',
+        'total_amount', 'status', 'created_at',
+    )
+    list_filter = ('status', 'pickup_date', 'created_at')
+    search_fields = (
+        'user__username', 'user__email',
+        'product__name', 'delivery_phone', 'mpesa_receipt',
+    )
+    raw_id_fields = ('user', 'product', 'vendor')
+    readonly_fields = (
+        'total_days', 'subtotal', 'total_amount',
+        'mpesa_checkout_request_id', 'mpesa_receipt',
+        'mpesa_result_code', 'mpesa_result_desc',
+        'created_at', 'paid_at', 'returned_at', 'cancelled_at',
+        'license_preview',
+    )
+    actions = ('mark_returned_action', 'mark_cancelled_action')
+    fieldsets = (
+        (None, {
+            'fields': ('product', 'vendor', 'user', 'status'),
+        }),
+        ('Booking window', {
+            'fields': ('pickup_date', 'return_date', 'total_days'),
+        }),
+        ('Pricing', {
+            'fields': ('daily_rate', 'rental_deposit', 'subtotal', 'total_amount'),
+        }),
+        ('Delivery', {
+            'fields': (
+                'delivery_full_name', 'delivery_phone',
+                'delivery_address', 'delivery_notes',
+            ),
+        }),
+        ('Customer verification', {
+            'fields': ('driver_license', 'license_preview', 'customer_notes'),
+        }),
+        ('M-Pesa audit', {
+            'fields': (
+                'mpesa_phone', 'mpesa_checkout_request_id',
+                'mpesa_receipt', 'mpesa_result_code', 'mpesa_result_desc',
+            ),
+            'classes': ('collapse',),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'paid_at', 'returned_at', 'cancelled_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    @admin.display(description='License')
+    def license_preview(self, obj):
+        if not obj.driver_license:
+            return '—'
+        return format_html(
+            '<a href="{0}" target="_blank">'
+            '<img src="{0}" style="max-width:420px;border:1px solid #444"></a>',
+            obj.driver_license.url,
+        )
+
+    @admin.action(description='Mark selected as RETURNED')
+    def mark_returned_action(self, request, queryset):
+        count = 0
+        for r in queryset.filter(status__in=[
+            VehicleRental.Status.CONFIRMED,
+            VehicleRental.Status.ACTIVE,
+        ]):
+            r.mark_returned()
+            count += 1
+        self.message_user(request, f'{count} rental(s) marked returned.')
+
+    @admin.action(description='Cancel selected rentals')
+    def mark_cancelled_action(self, request, queryset):
+        count = 0
+        for r in queryset.filter(status__in=[
+            VehicleRental.Status.PENDING,
+            VehicleRental.Status.CONFIRMED,
+        ]):
+            r.mark_cancelled()
+            count += 1
+        self.message_user(request, f'{count} rental(s) cancelled.')
