@@ -18,10 +18,10 @@ def mpesa_callback(request):
     """Safaricom posts the result of an STK push here.
 
     Handles order payments (MpesaTransaction), rider tips (RiderTip),
-    vendor subscriptions (VendorSubscription), and marketer activations
-    (MarketerSubscription) — all share this one callback URL, so we look
-    the checkout_request_id up in whichever table matches. Public endpoint,
-    CSRF exempt.
+    vendor subscriptions (VendorSubscription), marketer activations
+    (MarketerSubscription), and vehicle rentals (VehicleRental) — all
+    share this one callback URL, so we look the checkout_request_id up
+    in whichever table matches. Public endpoint, CSRF exempt.
     """
     try:
         data = json.loads(request.body)
@@ -65,7 +65,35 @@ def mpesa_callback(request):
             marketer_sub, result_code, result_desc, stk_callback,
         )
 
+    # 5. Vehicle rental booking?
+    from store.models import VehicleRental
+    rental = VehicleRental.objects.filter(
+        mpesa_checkout_request_id=checkout_request_id,
+        status=VehicleRental.Status.PENDING,
+    ).first()
+    if rental:
+        return _handle_rental_callback(rental, result_code, result_desc, stk_callback)
+
     return JsonResponse({'ResultCode': 0, 'ResultDesc': 'Accepted (no matching txn)'})
+
+
+def _handle_rental_callback(rental, result_code, result_desc, stk_callback):
+    """Fires when Safaricom reports the outcome of a rental booking's
+    STK push. On success, moves the booking from PENDING to CONFIRMED."""
+    if str(result_code) == '0':
+        items = stk_callback.get('CallbackMetadata', {}).get('Item', [])
+        metadata = {item.get('Name'): item.get('Value') for item in items}
+        rental.mark_paid(
+            receipt=str(metadata.get('MpesaReceiptNumber', '')),
+            result_code=str(result_code),
+            result_desc=str(result_desc)[:255],
+        )
+    else:
+        rental.mark_failed(
+            code=str(result_code),
+            desc=str(result_desc)[:255],
+        )
+    return JsonResponse({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
 
 def _handle_vendor_subscription_callback(subscription, result_code, result_desc, stk_callback):
