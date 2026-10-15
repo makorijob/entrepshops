@@ -55,23 +55,15 @@
             {% include "includes/star_rating.html" with product=product %}
 
             {% if product.availability == 'discontinued' %}
-                <p class="badge badge-muted pd-availability">
-                    Sorry, this product is no longer available online.
-                </p>
+                <p class="badge badge-muted pd-availability">Sorry, this product is no longer available online.</p>
             {% elif product.availability == 'unavailable' %}
-                <p class="badge badge-muted pd-availability">
-                    This product is temporarily unavailable.
-                </p>
+                <p class="badge badge-muted pd-availability">This product is temporarily unavailable.</p>
             {% elif product.availability == 'last_chance' %}
-                <p class="badge badge-warning pd-availability">
-                    Last chance — limited stock remaining.
-                </p>
+                <p class="badge badge-warning pd-availability">Last chance — limited stock remaining.</p>
             {% endif %}
 
             {% if not product.is_deliverable %}
-                <p class="badge badge-warning pd-availability">
-                    This item is currently not available for online sale/delivery.
-                </p>
+                <p class="badge badge-warning pd-availability">This item is currently not available for online sale/delivery.</p>
             {% endif %}
 
             {% if product.is_rentable %}
@@ -83,10 +75,7 @@
                             KES {{ product.daily_rate|floatformat:0 }}<span class="pd-rental-unit">/day</span>
                         </div>
                         {% if product.rental_deposit %}
-                            <p class="muted">
-                                Plus KES {{ product.rental_deposit|floatformat:0 }}
-                                refundable deposit
-                            </p>
+                            <p class="muted">Plus KES {{ product.rental_deposit|floatformat:0 }} refundable deposit</p>
                         {% endif %}
                         {% if product.minimum_days > 1 %}
                             <p class="muted">Minimum {{ product.minimum_days }} days</p>
@@ -200,6 +189,94 @@
             {% endif %}
         </section>
     </div>
+
+    {# ---------------- Related products ---------------- #}
+    {% if related_products %}
+    <section class="related-section reveal">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">You may also like</span>
+                <h3>
+                    {% if product.category %}
+                        More from {{ product.category.name }}
+                    {% elif product.department %}
+                        More from {{ product.department.name }}
+                    {% else %}
+                        Similar items
+                    {% endif %}
+                </h3>
+            </div>
+            <a class="sub"
+               href="{% url 'store:home' %}{% if product.category %}?category={{ product.category.slug }}{% elif product.department %}?department={{ product.department.slug }}{% endif %}#shop">
+                See all →
+            </a>
+        </div>
+
+        <div class="related-grid">
+            {% for rp in related_products %}
+                <article class="product-card">
+                    <a href="{{ rp.get_absolute_url }}">
+                        {% with img=rp.primary_image %}
+                            {% if img %}
+                                <img src="{{ img.url }}" alt="{{ rp.name }}">
+                            {% else %}
+                                <div class="img-placeholder">
+                                    <svg viewBox="0 0 24 24" style="color:#45D68A">
+                                        <use href="#icon-{{ rp.department.icon_kind|default:'bottle' }}"/>
+                                    </svg>
+                                </div>
+                            {% endif %}
+                        {% endwith %}
+
+                        {% if rp.is_rentable %}
+                            <span class="badge start-from-badge" style="background:#E8B93C; color:#1a1208;">For Hire</span>
+                        {% elif rp.has_variants %}
+                            {% with v=rp.available_variants.first %}
+                                {% if v.discount_percent %}
+                                    <span class="badge badge-warning discount-flag">-{{ v.discount_percent }}%</span>
+                                {% endif %}
+                            {% endwith %}
+                        {% elif rp.discount_percent %}
+                            <span class="badge badge-warning discount-flag">-{{ rp.discount_percent }}%</span>
+                        {% endif %}
+                    </a>
+
+                    {% if rp.is_rentable %}
+                        <p class="price">
+                            KES {{ rp.daily_rate|floatformat:0 }}<span class="price-unit">/day</span>
+                        </p>
+                        {% if rp.rental_deposit %}
+                            <p class="product-deposit-note">+ KES {{ rp.rental_deposit|floatformat:0 }} deposit</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="price">
+                            {% if rp.has_variants %}
+                                {% with lo=rp.price_range.0 hi=rp.price_range.1 %}
+                                    KES {{ lo }}{% if lo != hi %}–{{ hi }}{% endif %}
+                                {% endwith %}
+                            {% else %}
+                                KES {{ rp.price }}
+                                {% if rp.compare_at_price %}
+                                    <span class="was-price">KES {{ rp.compare_at_price }}</span>
+                                {% endif %}
+                            {% endif %}
+                        </p>
+                    {% endif %}
+
+                    <a href="{{ rp.get_absolute_url }}" class="product-title-link">
+                        <h4 class="product-title">{{ rp.name }}</h4>
+                    </a>
+
+                    {% if rp.vendor %}
+                        <p class="product-vendor">
+                            by <a href="{% url 'vendors:public_profile' rp.vendor.id %}">{{ rp.vendor.business_name }}</a>
+                        </p>
+                    {% endif %}
+                </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 </div>
 
 <script>
