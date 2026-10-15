@@ -97,9 +97,28 @@
                                 <img src="{{ p.image.url }}" alt="" class="cart-thumb">
                             {% endif %}
                         </td>
-                        <td>{{ p.name }}</td>
-                        <td>KES {{ p.price }}</td>
-                        <td>{{ p.stock }}</td>
+                        <td>
+                            {{ p.name }}
+                            {% if p.is_rentable %}
+                                <span class="badge" style="background: rgba(232,185,60,0.12); border-color: rgba(232,185,60,0.35); color: var(--gold); margin-left: 6px; font-size: 0.65rem;">
+                                    Rental
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.is_rentable %}
+                                KES {{ p.daily_rate|floatformat:0 }}/day
+                            {% else %}
+                                KES {{ p.price }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.is_rentable %}
+                                —
+                            {% else %}
+                                {{ p.stock }}
+                            {% endif %}
+                        </td>
                         <td>
                             {% if p.is_approved and p.is_active %}
                                 <span class="badge badge-success">Live</span>
