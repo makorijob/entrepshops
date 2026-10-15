@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Book {{ product.name }} — Entrep - Shop{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <div class="page-head">
+        <span class="eyebrow">Vehicle hire</span>
+        <h1>{{ product.name }}</h1>
+        <p class="lede">
+            Book this vehicle for the dates you need. Pay via M-Pesa and
+            we'll deliver it to your address — bring your original driving
+            license when it arrives.
+        </p>
+    </div>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li class="message {{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div class="rental-layout">
+
+        {# ---------- Left: vehicle summary ---------- #}
+        <section class="glass rental-vehicle">
+            {% with img=product.primary_image %}
+                {% if img %}
+                    <div class="rental-vehicle-image">
+                        <img src="{{ img.url }}" alt="{{ product.name }}">
+                    </div>
+                {% else %}
+                    <div class="rental-vehicle-image img-placeholder large">
+                        <svg viewBox="0 0 24 24"><use href="#icon-truck"/></svg>
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <div class="rental-vehicle-body">
+                <span class="eyebrow">{{ product.department.name|default:"Vehicle" }}</span>
+                <h2>{{ product.name }}</h2>
+
+                {% if product.description %}
+                    <p class="muted">{{ product.description|truncatechars:260 }}</p>
+                {% endif %}
+
+                {% if product.rental_pickup_notes %}
+                    <div class="rental-notes">
+                        <strong>Pickup notes</strong>
+                        <p>{{ product.rental_pickup_notes }}</p>
+                    </div>
+                {% endif %}
+
+                <ul class="rental-facts">
+                    <li>
+                        <span>Daily rate</span>
+                        <strong>KES {{ product.daily_rate|floatformat:0 }}</strong>
+                    </li>
+                    <li>
+                        <span>Refundable deposit</span>
+                        <strong>KES {{ product.rental_deposit|default:0|floatformat:0 }}</strong>
+                    </li>
+                    <li>
+                        <span>Minimum rental</span>
+                        <strong>{{ min_days }} day{{ min_days|pluralize }}</strong>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        {# ---------- Right: booking form ---------- #}
+        <section class="glass rental-form-wrap">
+            <h2>Booking details</h2>
+
+            <form method="post"
+                  action="{% url 'store:rental_start_payment' product.id %}"
+                  enctype="multipart/form-data"
+                  class="rental-form"
+                  id="rental-form">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <ul class="errorlist">
+                        {% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}
+                    </ul>
+                {% endif %}
+
+                <div class="rental-dates">
+                    <div class="shopify-field">
+                        <label for="{{ form.pickup_date.id_for_label }}">Pickup date</label>
+                        {{ form.pickup_date }}
+                        {% if form.pickup_date.errors %}
+                            <ul class="errorlist">{% for e in form.pickup_date.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                        {% endif %}
+                    </div>
+                    <div class="shopify-field">
+                        <label for="{{ form.return_date.id_for_label }}">Return date</label>
+                        {{ form.return_date }}
+                        {% if form.return_date.errors %}
+                            <ul class="errorlist">{% for e in form.return_date.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {# Live availability + price summary — updated by JS #}
+                <div class="rental-summary" id="rental-summary">
+                    <div class="rental-summary-row">
+                        <span>Rate per day</span>
+                        <span>KES {{ product.daily_rate|floatformat:0 }}</span>
+                    </div>
+                    <div class="rental-summary-row" id="row-days" style="display:none;">
+                        <span>Total days</span>
+                        <span id="value-days">—</span>
+                    </div>
+                    <div class="rental-summary-row" id="row-subtotal" style="display:none;">
+                        <span>Subtotal</span>
+                        <span id="value-subtotal">—</span>
+                    </div>
+                    <div class="rental-summary-row" id="row-deposit">
+                        <span>Refundable deposit</span>
+                        <span>KES {{ product.rental_deposit|default:0|floatformat:0 }}</span>
+                    </div>
+                    <div class="rental-summary-row rental-summary-total" id="row-total" style="display:none;">
+                        <span>Total due now</span>
+                        <strong id="value-total">—</strong>
+                    </div>
+                    <div class="rental-availability-msg" id="availability-msg"></div>
+                </div>
+
+                <div class="shopify-field">
+                    <label for="{{ form.delivery_full_name.id_for_label }}">Full name</label>
+                    {{ form.delivery_full_name }}
+                    {% if form.delivery_full_name.errors %}
+                        <ul class="errorlist">{% for e in form.delivery_full_name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                </div>
+
+                <div class="shopify-field">
+                    <label for="{{ form.delivery_phone.id_for_label }}">Phone number (M-Pesa)</label>
+                    {{ form.delivery_phone }}
+                    {% if form.delivery_phone.errors %}
+                        <ul class="errorlist">{% for e in form.delivery_phone.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                </div>
+
+                <div class="shopify-field">
+                    <label for="{{ form.delivery_address.id_for_label }}">Delivery address</label>
+                    {{ form.delivery_address }}
+                    {% if form.delivery_address.errors %}
+                        <ul class="errorlist">{% for e in form.delivery_address.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                </div>
+
+                <div class="shopify-field">
+                    <label for="{{ form.delivery_notes.id_for_label }}">Delivery notes <span class="muted">(optional)</span></label>
+                    {{ form.delivery_notes }}
+                </div>
+
+                <div class="shopify-field">
+                    <label for="{{ form.driver_license.id_for_label }}">Driving license photo</label>
+                    {{ form.driver_license }}
+                    <span class="helptext">
+                        A clear photo of your valid driving license. We verify it before the vehicle is released.
+                    </span>
+                    {% if form.driver_license.errors %}
+                        <ul class="errorlist">{% for e in form.driver_license.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                </div>
+
+                <div class="shopify-field">
+                    <label for="{{ form.customer_notes.id_for_label }}">Anything else? <span class="muted">(optional)</span></label>
+                    {{ form.customer_notes }}
+                </div>
+
+                <button type="submit" class="btn btn-full" id="submit-btn">
+                    Pay <span id="btn-total">—</span> with M-Pesa
+                </button>
+
+                <p class="muted rental-disclaimer">
+                    By booking you agree to the platform's rental terms. The
+                    deposit is refunded by the vendor after the vehicle is
+                    returned in the same condition.
+                </p>
+            </form>
+        </section>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    const pickupEl = document.getElementById('{{ form.pickup_date.id_for_label }}');
+    const returnEl = document.getElementById('{{ form.return_date.id_for_label }}');
+    const productId = {{ product.id }};
+    const availUrl = "{% url 'store:rental_availability' product.id %}";
+
+    const rowDays = document.getElementById('row-days');
+    const rowSubtotal = document.getElementById('row-subtotal');
+    const rowTotal = document.getElementById('row-total');
+    const valDays = document.getElementById('value-days');
+    const valSubtotal = document.getElementById('value-subtotal');
+    const valTotal = document.getElementById('value-total');
+    const btnTotal = document.getElementById('btn-total');
+    const availMsg = document.getElementById('availability-msg');
+    const submitBtn = document.getElementById('submit-btn');
+
+    if (!pickupEl || !returnEl) return;
+
+    let debounceTimer;
+
+    function clearPrice() {
+        rowDays.style.display = 'none';
+        rowSubtotal.style.display = 'none';
+        rowTotal.style.display = 'none';
+        valTotal.textContent = '—';
+        btnTotal.textContent = '—';
+    }
+
+    function setMessage(text, tone) {
+        availMsg.textContent = text || '';
+        availMsg.className = 'rental-availability-msg' + (tone ? ' rental-msg-' + tone : '');
+    }
+
+    function checkAvailability() {
+        const pickup = pickupEl.value;
+        const ret = returnEl.value;
+        if (!pickup || !ret) {
+            clearPrice();
+            setMessage('');
+            return;
+        }
+
+        const url = `${availUrl}?pickup=${encodeURIComponent(pickup)}&return=${encodeURIComponent(ret)}`;
+
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.available) {
+                    setMessage('Available — you can book these dates.', 'ok');
+                    rowDays.style.display = '';
+                    rowSubtotal.style.display = '';
+                    rowTotal.style.display = '';
+                    valDays.textContent = data.days + (data.days === 1 ? ' day' : ' days');
+                    valSubtotal.textContent = 'KES ' + Number(data.subtotal).toLocaleString();
+                    valTotal.textContent = 'KES ' + Number(data.total).toLocaleString();
+                    btnTotal.textContent = 'KES ' + Number(data.total).toLocaleString();
+                    submitBtn.disabled = false;
+                } else {
+                    clearPrice();
+                    setMessage(data.reason || 'Not available for those dates.', 'err');
+                    submitBtn.disabled = true;
+                }
+            })
+            .catch(() => {
+                // Network blip — let the server validate on submit.
+                clearPrice();
+                setMessage('');
+                submitBtn.disabled = false;
+            });
+    }
+
+    function debounced() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(checkAvailability, 300);
+    }
+
+    pickupEl.addEventListener('change', debounced);
+    returnEl.addEventListener('change', debounced);
+    pickupEl.addEventListener('input', debounced);
+    returnEl.addEventListener('input', debounced);
+
+    // Initial check
+    checkAvailability();
+})();
+</script>
+{% endblock %}
