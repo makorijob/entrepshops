@@ -17,9 +17,6 @@ from .models import (
 )
 
 
-# Maps each Department.theme into one of the three hero tones the CSS
-# understands: green / orange / gold. This keeps the hero looking correct
-# regardless of how many department themes you add later.
 _THEME_TO_HERO_TONE = {
     'green':   'green',
     'amber':   'gold',
@@ -30,7 +27,6 @@ _THEME_TO_HERO_TONE = {
 
 
 def _safe_next(request, fallback):
-    """Validate ?next= so we never redirect off-site."""
     nxt = request.POST.get('next') or request.GET.get('next')
     if nxt and url_has_allowed_host_and_scheme(
         nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()
@@ -48,12 +44,6 @@ def _parse_quantity(request, default=1, minimum=1, maximum=999):
 
 
 class _HeroSlide:
-    """Lightweight wrapper so featured Products can be rendered by the same
-    template as Promotion-backed hero slides. Exposes the attributes the
-    template expects: title, kicker, description, cta_label, cta_url, tone,
-    media_type, image, video_source, voucher_code.
-    """
-
     __slots__ = (
         'title', 'kicker', 'description', 'cta_label', 'cta_url',
         'tone', 'media_type', 'image', 'video_source', 'voucher_code',
@@ -150,7 +140,6 @@ def home(request):
             'dept_theme': selected_department.theme if selected_department else '',
         })
 
-    # ---- Hero slider: featured PRODUCTS ----
     featured_products = (
         Product.objects
         .visible()
@@ -169,7 +158,6 @@ def home(request):
             .order_by('sort_order', '-created_at')[:5]
         )
 
-    # ---- Deals carousel: any other active Promotions ----
     promotions = list(
         Promotion.objects
         .filter(is_active=True)
@@ -197,7 +185,56 @@ def product_detail(request, slug):
         .prefetch_related('variants', 'images', 'offers'),
         slug=slug,
     )
-    return render(request, 'store/product_detail.html', {'product': product})
+
+    # ------------------------------------------------------------------
+    # Related products
+    # 1st: same category, same rentable flag, exclude current, limit 4.
+    # 2nd: top up with same-department products (still same rentable flag).
+    # 3rd: if the product has no category, fall back to same department.
+    # ------------------------------------------------------------------
+    RELATED_LIMIT = 4
+    related = []
+    seen_ids = {product.pk}
+
+    base_qs = (
+        Product.objects.visible()
+        .filter(is_rentable=product.is_rentable)
+        .exclude(pk__in=seen_ids)
+        .select_related('category', 'department')
+        .prefetch_related('variants', 'images')
+        .order_by('-created_at')
+    )
+
+    # Stage 1 — same category
+    if product.category_id:
+        cat_items = list(base_qs.filter(category_id=product.category_id)[:RELATED_LIMIT])
+        related.extend(cat_items)
+        seen_ids.update(p.pk for p in cat_items)
+
+    # Stage 2 — same department (any category)
+    if len(related) < RELATED_LIMIT and product.department_id:
+        remaining = RELATED_LIMIT - len(related)
+        dept_items = list(
+            base_qs.filter(department_id=product.department_id)
+            .exclude(pk__in=seen_ids)[:remaining]
+        )
+        related.extend(dept_items)
+        seen_ids.update(p.pk for p in dept_items)
+
+    # Stage 3 — if still short and the product has no department, use the
+    # same category from *any* department as a last resort (edge case).
+    if len(related) < RELATED_LIMIT and not product.department_id and product.category_id:
+        remaining = RELATED_LIMIT - len(related)
+        extras = list(
+            base_qs.filter(category_id=product.category_id)
+            .exclude(pk__in=seen_ids)[:remaining]
+        )
+        related.extend(extras)
+
+    return render(request, 'store/product_detail.html', {
+        'product': product,
+        'related_products': related,
+    })
 
 
 @require_POST
@@ -231,7 +268,6 @@ def cart_add(request, product_id):
         variant = product.available_variants.first()
 
     quantity = _parse_quantity(request)
-
     available_stock = variant.stock if variant else product.stock
     if quantity > available_stock:
         message = f'Only {available_stock} left in stock.'
@@ -241,7 +277,6 @@ def cart_add(request, product_id):
         return redirect(_safe_next(request, product.get_absolute_url()))
 
     cart.add(product=product, variant=variant, quantity=quantity)
-
     label = f'{product.name} ({variant.size_label})' if variant else product.name
 
     if is_ajax:
@@ -339,12 +374,11 @@ def address_add(request):
 
 
 # ======================================================================
-# Vehicle rentals — Option A: standalone daily car hire
+# Vehicle rentals
 # ======================================================================
 @login_required
 @require_GET
 def rental_checkout(request, product_id):
-    """Booking form for a rentable vehicle. Doesn't go through the cart."""
     from .forms import VehicleRentalForm
 
     product = get_object_or_404(
@@ -380,8 +414,6 @@ def rental_checkout(request, product_id):
 @login_required
 @require_POST
 def rental_start_payment(request, product_id):
-    """Validates the booking, creates a PENDING VehicleRental, and fires
-    the M-Pesa STK push for the total amount."""
     from payments.mpesa import MpesaError, normalize_phone, stk_push
     from .forms import VehicleRentalForm
 
@@ -408,7 +440,6 @@ def rental_start_payment(request, product_id):
     pickup = form.cleaned_data['pickup_date']
     ret = form.cleaned_data['return_date']
 
-    # Race guard — re-check availability right before creating the booking
     if VehicleRental.has_overlap(product, pickup, ret):
         messages.error(
             request,
@@ -474,7 +505,6 @@ def rental_start_payment(request, product_id):
 @login_required
 @require_GET
 def rental_success(request, booking_id):
-    """Confirmation page — polled by JS until M-Pesa confirms."""
     rental = get_object_or_404(
         VehicleRental.objects.select_related('product'),
         id=booking_id, user=request.user,
@@ -485,10 +515,7 @@ def rental_success(request, booking_id):
 @login_required
 @require_GET
 def rental_status(request, booking_id):
-    """Polled by the success page — tells the frontend if payment landed."""
-    rental = get_object_or_404(
-        VehicleRental, id=booking_id, user=request.user,
-    )
+    rental = get_object_or_404(VehicleRental, id=booking_id, user=request.user)
     return JsonResponse({
         'status': rental.status,
         'paid': rental.status == VehicleRental.Status.CONFIRMED,
@@ -502,7 +529,6 @@ def rental_status(request, booking_id):
 
 @require_GET
 def rental_availability(request, product_id):
-    """AJAX — checks whether a vehicle is free for a date range."""
     product = get_object_or_404(Product, id=product_id, is_rentable=True)
 
     try:
@@ -542,7 +568,6 @@ def rental_availability(request, product_id):
 @login_required
 @require_GET
 def my_rentals(request):
-    """Customer's booking history."""
     rentals = (
         VehicleRental.objects
         .filter(user=request.user)
