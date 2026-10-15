@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}All products — Entrep - Shop{% endblock %}
+
+{% block content %}
+<div class="container product-list-page" id="product-list-page">
+
+    <div class="page-head">
+        <span class="eyebrow">The shop</span>
+        <h1>All products</h1>
+        <p class="lede">Browse every listing on EntrepShop — filter by department, category, price, or availability.</p>
+    </div>
+
+    <div class="pl-layout">
+
+        {# ---------- Sidebar filters ---------- #}
+        <aside class="pl-sidebar" id="pl-sidebar">
+            <div class="pl-sidebar-head">
+                <h3>Filters</h3>
+                <button type="button" class="pl-sidebar-close" id="pl-sidebar-close" aria-label="Close filters">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+
+            {# Department #}
+            <div class="pl-filter-group">
+                <span class="pl-filter-label">Department</span>
+                <ul class="pl-filter-list" id="pl-departments">
+                    <li>
+                        <a href="#" data-filter="department" data-value="" class="{% if not selected_department %}is-active{% endif %}">
+                            All departments
+                        </a>
+                    </li>
+                    {% for dept in departments %}
+                        <li>
+                            <a href="#"
+                               data-filter="department"
+                               data-value="{{ dept.slug }}"
+                               class="{% if selected_department == dept %}is-active{% endif %}">
+                                {{ dept.name }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            {# Category #}
+            <div class="pl-filter-group">
+                <span class="pl-filter-label">Category</span>
+                <ul class="pl-filter-list" id="pl-categories">
+                    <li>
+                        <a href="#" data-filter="category" data-value="" class="{% if not selected_category %}is-active{% endif %}">
+                            All categories
+                        </a>
+                    </li>
+                    {% for cat in categories %}
+                        <li>
+                            <a href="#"
+                               data-filter="category"
+                               data-value="{{ cat.slug }}"
+                               class="{% if selected_category == cat %}is-active{% endif %}">
+                                {{ cat.name }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            {# Price #}
+            <div class="pl-filter-group">
+                <span class="pl-filter-label">Price (KES)</span>
+                <div class="pl-price-row">
+                    <input type="number" min="0" step="100" inputmode="numeric"
+                           id="pl-min-price" placeholder="Min" value="{{ request.GET.min_price|default:'' }}">
+                    <span class="pl-price-dash">–</span>
+                    <input type="number" min="0" step="100" inputmode="numeric"
+                           id="pl-max-price" placeholder="Max" value="{{ request.GET.max_price|default:'' }}">
+                </div>
+            </div>
+
+            {# Type #}
+            <div class="pl-filter-group">
+                <span class="pl-filter-label">Product type</span>
+                <ul class="pl-filter-list" id="pl-type">
+                    <li><a href="#" data-filter="type" data-value="all"  class="{% if request.GET.type == 'all' or not request.GET.type %}is-active{% endif %}">All</a></li>
+                    <li><a href="#" data-filter="type" data-value="sale" class="{% if request.GET.type == 'sale' %}is-active{% endif %}">For sale</a></li>
+                    <li><a href="#" data-filter="type" data-value="hire" class="{% if request.GET.type == 'hire' %}is-active{% endif %}">For hire</a></li>
+                </ul>
+            </div>
+
+            {# In stock #}
+            <div class="pl-filter-group">
+                <label class="pl-checkbox">
+                    <input type="checkbox" id="pl-in-stock" {% if request.GET.in_stock == '1' %}checked{% endif %}>
+                    <span>In stock only</span>
+                </label>
+            </div>
+
+            <button type="button" class="btn btn-outline btn-small pl-clear" id="pl-clear">
+                Clear all filters
+            </button>
+        </aside>
+
+        {# ---------- Main content ---------- #}
+        <div class="pl-main">
+
+            {# Toolbar #}
+            <div class="pl-toolbar">
+                <button type="button" class="pl-filters-toggle" id="pl-filters-toggle">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+                    Filters
+                </button>
+
+                <div class="pl-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="search" id="pl-search-input"
+                           placeholder="Search products…"
+                           value="{{ search_query }}" autocomplete="off">
+                </div>
+
+                <div class="pl-toolbar-right">
+                    <span class="pl-count" id="pl-count">{{ page_obj.paginator.count }} product{{ page_obj.paginator.count|pluralize }}</span>
+
+                    <select class="pl-sort" id="pl-sort" aria-label="Sort">
+                        <option value="newest">Newest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="price_asc">Price: low to high</option>
+                        <option value="price_desc">Price: high to low</option>
+                        <option value="name_asc">Name A–Z</option>
+                        <option value="name_desc">Name Z–A</option>
+                    </select>
+
+                    <div class="view-toggle" role="group" aria-label="View mode">
+                        <button type="button" class="view-toggle-btn is-active" id="view-grid" aria-label="Grid view">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                        </button>
+                        <button type="button" class="view-toggle-btn" id="view-list" aria-label="List view">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {# Active filter chips #}
+            <div class="pl-chips" id="pl-chips"></div>
+
+            {# Grid — server-rendered on load, swapped by JS on filter change #}
+            <section class="product-grid" id="pl-grid">
+                {% include "store/_product_list_grid.html" %}
+            </section>
+
+            <div id="pl-sentinel" aria-hidden="true"></div>
+            <div id="pl-loader" class="grid-loader" style="display:none;">
+                <span class="grid-loader-spinner"></span>
+                <span>Loading more…</span>
+            </div>
+            <div id="pl-end" class="grid-end" style="display:none;">
+                You've reached the end.
+            </div>
+        </div>
+    </div>
+
+    <div class="pl-sidebar-backdrop" id="pl-sidebar-backdrop"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'js/product_list.js' %}" defer></script>
+{% endblock %}
