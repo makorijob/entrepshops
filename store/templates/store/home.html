@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Entrep - Shop — quality products, delivered{% endblock %}
 
 {% block content %}
@@ -6,7 +7,7 @@
 {% if hero_posters %}
 <section class="hero-poster-stack" id="hero">
     {% for promo in hero_posters %}
-    <a href="{{ promo.cta_url|default:'#shop' }}"
+    <a href="{{ promo.cta_url|default:'/products/' }}"
        class="hero-poster {% if forloop.first %}is-active{% endif %}"
        data-tone="{{ promo.tone|default:'orange' }}">
         <div class="hero-poster-media">
@@ -129,7 +130,7 @@
         {% if promotions %}
         <div class="promo-poster-track" id="promo-slider">
             {% for promo in promotions %}
-            <a href="{{ promo.cta_url|default:'#shop' }}"
+            <a href="{{ promo.cta_url|default:'/products/' }}"
                class="promo-poster {% if forloop.first %}is-active{% endif %}"
                data-tone="{{ promo.tone }}">
                 <div class="promo-poster-media">
@@ -195,12 +196,12 @@
             </div>
         </div>
         <div class="dept-grid">
-            <a href="{% url 'store:home' %}#shop"
+            <a href="{% url 'store:product_list' %}"
                class="dept-card dept-card-all {% if not selected_department %}is-active{% endif %}"
                data-dept-preview="">All departments</a>
 
             {% for dept in departments %}
-                <a href="?department={{ dept.slug }}#shop"
+                <a href="{% url 'store:product_list' %}?department={{ dept.slug }}"
                    class="dept-card {% if selected_department == dept %}is-active{% endif %}"
                    data-dept-preview="{{ dept.theme }}">{{ dept.name }}</a>
             {% endfor %}
@@ -208,79 +209,27 @@
     </section>
     {% endif %}
 
-    <section class="reveal" id="shop">
+    <section class="reveal" id="browse-all">
         <div class="section-head">
             <div>
                 <span class="eyebrow">The shop</span>
-                <h3 id="shop-heading">{% if selected_category %}{{ selected_category.name }}{% elif selected_department %}{{ selected_department.name }}{% else %}All departments{% endif %}</h3>
-            </div>
-            <div class="shop-controls">
-                <form id="shop-search-form" class="shop-search-form" role="search">
-                    <svg style="width:16px;height:16px"><use href="#icon-search"/></svg>
-                    <input type="search" name="q" id="shop-search-input"
-                           placeholder="Search {% if selected_department %}{{ selected_department.name|lower }}{% else %}products{% endif %}…"
-                           value="{{ search_query }}" autocomplete="off">
-                </form>
-                <div class="view-toggle" role="group" aria-label="View mode">
-                    <button type="button" class="view-toggle-btn is-active"
-                            id="view-grid" aria-label="Grid view" title="Grid view">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="3" width="7" height="7"/>
-                            <rect x="14" y="3" width="7" height="7"/>
-                            <rect x="3" y="14" width="7" height="7"/>
-                            <rect x="14" y="14" width="7" height="7"/>
-                        </svg>
-                    </button>
-                    <button type="button" class="view-toggle-btn"
-                            id="view-list" aria-label="List view" title="List view">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="3" y1="6" x2="21" y2="6"/>
-                            <line x1="3" y1="12" x2="21" y2="12"/>
-                            <line x1="3" y1="18" x2="21" y2="18"/>
-                        </svg>
-                    </button>
-                </div>
+                <h3>Browse everything on EntrepShop</h3>
             </div>
         </div>
-        <div class="shop-layout">
-            <aside class="sidebar">
-                <h3>Categories</h3>
-                <ul class="category-list" id="category-list">
-                    <li>
-                        <a href="{% url 'store:home' %}{% if selected_department %}?department={{ selected_department.slug }}{% endif %}#shop"
-                           data-category-link
-                           data-category-name="All {{ selected_department.name|default:'products' }}"
-                           class="{% if not selected_category %}active{% endif %}">
-                            All {{ selected_department.name|default:'products' }}
-                        </a>
-                    </li>
-                    {% for category in categories %}
-                        <li>
-                            <a href="?category={{ category.slug }}{% if selected_department %}&department={{ selected_department.slug }}{% endif %}#shop"
-                               data-category-link
-                               data-category-slug="{{ category.slug }}"
-                               data-category-name="{{ category.name }}"
-                               class="{% if selected_category == category %}active{% endif %}">
-                                {{ category.name }}
-                            </a>
-                        </li>
-                    {% endfor %}
-                </ul>
-            </aside>
-
-            <section class="product-grid" id="product-grid">
-                {% include "store/_product_grid.html" %}
-            </section>
-            <div id="grid-sentinel" aria-hidden="true"></div>
-            <div id="grid-loader" class="grid-loader" style="display:none;">
-                <span class="grid-loader-spinner"></span>
-                <span>Loading more…</span>
+        <div class="glass" style="padding: 32px 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;">
+            <div>
+                <p style="margin: 0 0 6px; color: var(--text-dim); max-width: 60ch;">
+                    Thousands of products across every department — filter by price,
+                    category, and availability, or search for exactly what you need.
+                </p>
             </div>
-            <div id="grid-end" class="grid-end" style="display:none;">
-                You've reached the end.
-            </div>
+            <a href="{% url 'store:product_list' %}" class="btn">
+                Open the shop
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
         </div>
     </section>
+
 </div>
 {% endblock %}
 
@@ -332,169 +281,6 @@
         slideSelector: '.promo-poster', dotSelector: '#promo-dots .promo-poster-dot',
         prevId: 'promo-prev', nextId: 'promo-next',
         activeClass: 'is-active', autoplayMs: 5500,
-    });
-})();
-
-(function () {
-    const grid = document.getElementById('product-grid');
-    const heading = document.getElementById('shop-heading');
-    const categoryList = document.getElementById('category-list');
-    const sentinel = document.getElementById('grid-sentinel');
-    const loader = document.getElementById('grid-loader');
-    const endNote = document.getElementById('grid-end');
-    const viewGridBtn = document.getElementById('view-grid');
-    const viewListBtn = document.getElementById('view-list');
-    if (!grid || !categoryList) return;
-
-    // ---- State for infinite scroll ----
-    let nextPage = 2;
-    let hasNext = {% if page_obj.has_next %}true{% else %}false{% endif %};
-    let isLoading = false;
-    let currentUrl = window.location.pathname + window.location.search;
-
-    // ---- View mode (grid / list) ----
-    function applyViewMode(mode) {
-        if (mode === 'list') {
-            grid.classList.add('is-list');
-            if (viewListBtn) viewListBtn.classList.add('is-active');
-            if (viewGridBtn) viewGridBtn.classList.remove('is-active');
-        } else {
-            grid.classList.remove('is-list');
-            if (viewGridBtn) viewGridBtn.classList.add('is-active');
-            if (viewListBtn) viewListBtn.classList.remove('is-active');
-        }
-        try { localStorage.setItem('shop-view', mode); } catch (e) {}
-    }
-
-    const savedView = (() => {
-        try { return localStorage.getItem('shop-view'); } catch (e) { return null; }
-    })() || 'grid';
-    applyViewMode(savedView);
-
-    if (viewGridBtn) viewGridBtn.addEventListener('click', () => applyViewMode('grid'));
-    if (viewListBtn) viewListBtn.addEventListener('click', () => applyViewMode('list'));
-
-    // ---- Reset grid on new search / category ----
-    function resetGrid(newNextPage, newHasNext, newUrl) {
-        nextPage = newNextPage;
-        hasNext = newHasNext;
-        currentUrl = newUrl;
-        if (endNote) endNote.style.display = 'none';
-        if (loader) loader.style.display = 'none';
-    }
-
-    // ---- Load a fresh page (category switch or search) ----
-    async function loadCategory(url, push) {
-        grid.classList.add('is-loading');
-        try {
-            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!res.ok) throw new Error('bad response');
-            const data = await res.json();
-            grid.innerHTML = data.grid_html;
-            heading.textContent = data.heading;
-            if (data.dept_theme) {
-                document.body.dataset.dept = data.dept_theme;
-            } else {
-                delete document.body.dataset.dept;
-            }
-            categoryList.querySelectorAll('a').forEach(a => a.classList.remove('active'));
-            const match = categoryList.querySelector(`a[href="${new URL(url, window.location.origin).search}#shop"]`)
-                || (url.indexOf('category=') === -1 ? categoryList.querySelector('a[href$="#shop"]') : null);
-            if (match) match.classList.add('active');
-
-            resetGrid(data.next_page || 2, !!data.has_next, url);
-
-            if (push) history.pushState({}, '', url + '#shop');
-        } catch (err) {
-            window.location.href = url;
-        } finally {
-            grid.classList.remove('is-loading');
-        }
-    }
-
-    // ---- Load the next page and append (infinite scroll) ----
-    async function loadMore() {
-        if (isLoading || !hasNext) return;
-        isLoading = true;
-        if (loader) loader.style.display = 'flex';
-
-        const url = new URL(currentUrl, window.location.origin);
-        url.searchParams.set('page', nextPage);
-
-        try {
-            const res = await fetch(url.toString(), {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (!res.ok) throw new Error('bad response');
-            const data = await res.json();
-
-            const temp = document.createElement('div');
-            temp.innerHTML = data.grid_html;
-            while (temp.firstChild) {
-                grid.appendChild(temp.firstChild);
-            }
-
-            hasNext = !!data.has_next;
-            nextPage = data.next_page || (nextPage + 1);
-
-            if (!hasNext && endNote) {
-                endNote.style.display = 'block';
-            }
-        } catch (err) {
-            console.warn('Infinite scroll failed:', err);
-        } finally {
-            isLoading = false;
-            if (loader) loader.style.display = 'none';
-        }
-    }
-
-    // ---- IntersectionObserver for the sentinel ----
-    if ('IntersectionObserver' in window && sentinel) {
-        const io = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) loadMore();
-            });
-        }, { rootMargin: '200px 0px' });
-        io.observe(sentinel);
-    }
-
-    // ---- Category + search wiring ----
-    categoryList.addEventListener('click', (e) => {
-        const link = e.target.closest('a[data-category-link]');
-        if (!link) return;
-        e.preventDefault();
-        const url = link.getAttribute('href').replace('#shop', '') || window.location.pathname;
-        loadCategory(url || window.location.pathname, true);
-    });
-
-    window.addEventListener('popstate', () => {
-        loadCategory(window.location.pathname + window.location.search, false);
-    });
-
-    const searchForm = document.getElementById('shop-search-form');
-    const searchInput = document.getElementById('shop-search-input');
-    let searchTimer;
-
-    function runSearch() {
-        const q = searchInput.value.trim();
-        const url = q ? `${window.location.pathname}?q=${encodeURIComponent(q)}` : window.location.pathname;
-        loadCategory(url, true);
-    }
-
-    if (searchForm) searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
-    if (searchInput) {
-        searchInput.addEventListener('input', () => {
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(runSearch, 350);
-        });
-    }
-
-    document.addEventListener('click', (e) => {
-        const link = e.target.closest('a[data-page-link]');
-        if (!link) return;
-        e.preventDefault();
-        const url = link.getAttribute('href').replace('#shop', '');
-        loadCategory(url, true);
     });
 })();
 </script>
