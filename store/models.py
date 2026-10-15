@@ -67,8 +67,7 @@ class Department(models.Model):
     """A top-level shopping vertical — Drinks, Electronics, Vehicles,
     Fashion, etc. Each one carries its own visual theme, so the whole
     site re-skins itself depending on what the customer is browsing,
-    while staying one platform underneath. Fully admin-managed — add as
-    many departments as your business grows into."""
+    while staying one platform underneath."""
 
     class Theme(models.TextChoices):
         GREEN = 'green', 'Green & gold (drinks, food, everyday goods)'
@@ -85,11 +84,11 @@ class Department(models.Model):
 
     name = models.CharField(max_length=100, unique=True, help_text='e.g. Drinks, Electronics, Vehicles, Fashion.')
     slug = models.SlugField(max_length=110, unique=True, blank=True)
-    tagline = models.CharField(max_length=150, blank=True, help_text='Short line shown under the name, e.g. "Wholesale & retail, delivered nationwide".')
+    tagline = models.CharField(max_length=150, blank=True, help_text='Short line shown under the name.')
     theme = models.CharField(max_length=10, choices=Theme.choices, default=Theme.GREEN)
     unit_kind = models.CharField(
         max_length=10, choices=UnitKind.choices, default=UnitKind.NONE,
-        help_text='Controls the "size" label shown on the product page and the unit used on variants. Drinks → volume, Electronics → screen, groceries → weight.'
+        help_text='Controls the "size" label shown on the product page.'
     )
     icon_kind = models.CharField(
         max_length=20, default='bottle',
@@ -119,7 +118,7 @@ class Category(models.Model):
     department = models.ForeignKey(
         Department, related_name='categories', on_delete=models.CASCADE,
         null=True, blank=True,
-        help_text='Which department this category belongs to (Drinks, Electronics, etc).'
+        help_text='Which department this category belongs to.'
     )
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=110, unique=True)
@@ -134,15 +133,7 @@ class Category(models.Model):
 
 class ProductQuerySet(models.QuerySet):
     def visible(self):
-        """Everything a customer should be able to see and buy:
-        active + approved, AND (platform's own OR a vendor who's
-        admin-approved AND either on trial or subscribed).
-
-        Trial vendors' products are visible for the full 30-day trial,
-        and stay visible after the trial ends (grace period) — the vendor
-        simply can't add new ones."""
         from django.utils import timezone
-
         now = timezone.now()
         return self.filter(is_active=True, is_approved=True).exclude(
             availability=Product.Availability.DISCONTINUED
@@ -153,9 +144,6 @@ class ProductQuerySet(models.QuerySet):
             ) & (
                 models.Q(vendor__subscription_expires_at__gt=now) |
                 models.Q(vendor__trial_ends_at__gt=now) |
-                # Grace period: once trial expired, existing products
-                # still show. So we also allow vendors whose trial has
-                # already ended as long as the product is approved.
                 models.Q(vendor__trial_ends_at__isnull=False) |
                 models.Q(vendor__subscription_expires_at__isnull=False)
             )
@@ -178,7 +166,6 @@ class Product(models.Model):
     department = models.ForeignKey(
         Department, related_name='products', on_delete=models.PROTECT,
         null=True, blank=True,
-        help_text='Which top-level department this product belongs to. Auto-filled from the category if left blank.'
     )
     category = models.ForeignKey(
         Category, related_name='products', on_delete=models.CASCADE
@@ -186,68 +173,58 @@ class Product(models.Model):
     vendor = models.ForeignKey(
         'vendors.Vendor', related_name='products', on_delete=models.CASCADE,
         null=True, blank=True,
-        help_text='Leave blank for products the platform itself sells. Set this for a third-party seller\'s listing.'
     )
-    is_approved = models.BooleanField(
-        default=True,
-        help_text='Platform-owned products are auto-approved. Vendor listings default to unapproved until admin reviews them — see the "Approve selected products" admin action.'
-    )
+    is_approved = models.BooleanField(default=True)
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=160, unique=True)
     description = models.TextField(blank=True)
-    image = models.ImageField(
-        upload_to='products/', blank=True, null=True,
-        help_text='Main product photo. Additional gallery photos go in the "Images" section below.'
-    )
+    image = models.ImageField(upload_to='products/', blank=True, null=True)
     availability = models.CharField(
         max_length=20, choices=Availability.choices, default=Availability.AVAILABLE,
-        help_text='Controls the badge and whether "Add to cart" is enabled.'
     )
 
     # Fallback pricing/stock — only used if this product has no variants.
-    price = models.DecimalField(
-        max_digits=8, decimal_places=2, blank=True, null=True,
-        help_text='Fallback price in KES. Prefer setting prices on variants below.'
-    )
-    compare_at_price = models.DecimalField(
-        max_digits=8, decimal_places=2, blank=True, null=True,
-        help_text='Optional "was" price. Shows a discount badge when higher than price.'
-    )
-    stock = models.PositiveIntegerField(default=0, help_text='Fallback stock if no variants.')
-    volume_ml = models.PositiveIntegerField(
-        blank=True, null=True,
-        help_text='Legacy single-size field. Use variants for multi-size products.'
-    )
+    price = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    compare_at_price = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    stock = models.PositiveIntegerField(default=0)
+    volume_ml = models.PositiveIntegerField(blank=True, null=True)
 
-    wholesale_quantity_threshold = models.PositiveIntegerField(
-        blank=True, null=True,
-        help_text='Buying this many or more automatically switches to the wholesale unit price below.'
-    )
-    wholesale_price = models.DecimalField(
-        max_digits=8, decimal_places=2, blank=True, null=True,
-        help_text='Per-unit price applied automatically once the quantity threshold is met.'
-    )
-    is_alcoholic = models.BooleanField(
-        default=False,
-        help_text='Alcoholic drinks may be restricted from online sale/delivery.',
-    )
+    wholesale_quantity_threshold = models.PositiveIntegerField(blank=True, null=True)
+    wholesale_price = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    is_alcoholic = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_featured = models.BooleanField(
         default=False,
         help_text='Show this product in the homepage hero slider.',
     )
-    hero_tagline = models.CharField(
-        max_length=60, blank=True,
-        help_text='Short badge text for the hero slide, e.g. "20% off today". Defaults to "Featured".'
+    hero_tagline = models.CharField(max_length=60, blank=True)
+    hero_headline = models.CharField(max_length=100, blank=True)
+    hero_description = models.CharField(max_length=200, blank=True)
+
+    # ---- Rental / hire ----
+    is_rentable = models.BooleanField(
+        default=False,
+        help_text='Tick to make this a rental item. The product page will show a '
+                  'booking form instead of "Add to cart".',
     )
-    hero_headline = models.CharField(
-        max_length=100, blank=True,
-        help_text='Big hero headline. Defaults to the product name if left blank.'
+    daily_rate = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True,
+        help_text='Price per day, in KES. Only used when "is rentable" is ticked.',
     )
-    hero_description = models.CharField(
-        max_length=200, blank=True,
-        help_text='Short hero copy. Defaults to the product description if left blank.'
+    rental_deposit = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True,
+        help_text='Refundable deposit collected at booking, in KES. Vendor '
+                  'refunds after the car is returned.',
     )
+    minimum_days = models.PositiveIntegerField(
+        default=1,
+        help_text='Minimum rental period in days. Set by the vendor per car.',
+    )
+    rental_pickup_notes = models.TextField(
+        blank=True,
+        help_text='Optional notes shown to the customer before booking.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = ProductQuerySet.as_manager()
@@ -257,6 +234,7 @@ class Product(models.Model):
         indexes = [
             models.Index(fields=['department', 'is_active', 'is_approved']),
             models.Index(fields=['category', 'is_active', 'is_approved']),
+            models.Index(fields=['is_rentable', 'is_active', 'is_approved']),
         ]
 
     def clean(self):
@@ -266,7 +244,8 @@ class Product(models.Model):
                 raise ValidationError({
                     'department': (
                         f'Category "{self.category.name}" belongs to '
-                        f'"{self.category.department.name}", not to the department you selected.'
+                        f'"{self.category.department.name}", not to the '
+                        f'department you selected.'
                     )
                 })
 
@@ -286,15 +265,12 @@ class Product(models.Model):
     # ---- availability & stock ----
     @property
     def in_stock(self):
-        """True if anything is purchasable — a variant with stock, or
-        fallback stock for legacy products."""
         if self.has_variants:
             return self.variants.filter(is_active=True, stock__gt=0).exists()
         return self.stock > 0
 
     @property
     def is_deliverable(self):
-        """Respects the DISALLOW_ALCOHOL_DELIVERY setting."""
         from django.conf import settings as dj_settings
         if self.is_alcoholic and dj_settings.DISALLOW_ALCOHOL_DELIVERY:
             return False
@@ -302,9 +278,12 @@ class Product(models.Model):
 
     @property
     def is_available(self):
-        """False when discontinued/unavailable, or when nothing is in stock."""
         if self.availability in (self.Availability.DISCONTINUED, self.Availability.UNAVAILABLE):
             return False
+        if self.is_rentable:
+            # Rentables are always "available" — their availability is
+            # determined by the booking calendar, not by stock.
+            return True
         return self.in_stock
 
     # ---- variants ----
@@ -318,7 +297,6 @@ class Product(models.Model):
 
     @property
     def price_range(self):
-        """Lowest–highest active variant price, or (price, price) fallback."""
         prices = list(
             self.variants.filter(is_active=True).values_list('price', flat=True)
         )
@@ -329,7 +307,6 @@ class Product(models.Model):
     # ---- images ----
     @property
     def primary_image(self):
-        """First ProductImage by sort_order, or fall back to the legacy field."""
         img = self.images.order_by('sort_order', 'id').first()
         return img.image if img else self.image
 
@@ -364,11 +341,6 @@ class Product(models.Model):
 
 
 class ProductVariant(models.Model):
-    """One purchasable size/version of a product — a TV in 32"/40"/43",
-    a drink in 500ml/1L/2L, a bag of rice in 1kg/5kg/25kg. Each variant
-    has its own price, stock and SKU. The cart stores the variant, not
-    the product, so different sizes are priced independently."""
-
     class SizeUnit(models.TextChoices):
         NONE = '', '— (no unit)'
         INCH = 'in', 'Inches'
@@ -382,32 +354,16 @@ class ProductVariant(models.Model):
     product = models.ForeignKey(
         Product, related_name='variants', on_delete=models.CASCADE
     )
-    size_label = models.CharField(
-        max_length=40,
-        help_text='Shown on the size selector button, e.g. 32", 500ml, 1kg.'
-    )
-    size_value = models.DecimalField(
-        max_digits=8, decimal_places=2, blank=True, null=True,
-        help_text='Optional numeric value for sorting/filtering, e.g. 500 for 500ml.'
-    )
+    size_label = models.CharField(max_length=40)
+    size_value = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     size_unit = models.CharField(
         max_length=10, choices=SizeUnit.choices, blank=True, default='',
-        help_text='Unit that size_value is expressed in.'
     )
-    sku = models.CharField(
-        max_length=64, blank=True,
-        help_text='Optional stock-keeping unit for this exact size.'
-    )
+    sku = models.CharField(max_length=64, blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2, help_text='Price in KES')
-    compare_at_price = models.DecimalField(
-        max_digits=8, decimal_places=2, blank=True, null=True,
-        help_text='Optional "was" price for this size.'
-    )
+    compare_at_price = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
     stock = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(
-        default=True,
-        help_text='Turn off to hide this size without deleting it.'
-    )
+    is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -425,20 +381,12 @@ class ProductVariant(models.Model):
 
 
 class ProductImage(models.Model):
-    """Extra photos shown in the product gallery — the main hero image
-    plus thumbnails. The first image by sort_order is treated as primary."""
-
     product = models.ForeignKey(
         Product, related_name='images', on_delete=models.CASCADE
     )
     image = models.ImageField(upload_to='products/gallery/')
-    alt_text = models.CharField(
-        max_length=150, blank=True,
-        help_text='Short description of what the photo shows, for screen readers.'
-    )
-    sort_order = models.PositiveIntegerField(
-        default=0, help_text='Lower numbers show first. 0 = main photo.'
-    )
+    alt_text = models.CharField(max_length=150, blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -449,18 +397,11 @@ class ProductImage(models.Model):
 
 
 class ProductOffer(models.Model):
-    """A per-product special offer line — e.g. "Save 20% off TV Wall Mounts
-    when you buy a TV". Rendered in the highlighted offers box on the
-    product page."""
-
     product = models.ForeignKey(
         Product, related_name='offers', on_delete=models.CASCADE
     )
-    text = models.CharField(max_length=200, help_text='e.g. "Save 20% off TV Wall Mounts when you buy a TV"')
-    url = models.CharField(
-        max_length=300, blank=True,
-        help_text='Optional link. Leave blank for plain text.'
-    )
+    text = models.CharField(max_length=200)
+    url = models.CharField(max_length=300, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
@@ -472,11 +413,7 @@ class ProductOffer(models.Model):
 
 
 class BundleOffer(models.Model):
-    """A genuine "buy X get Y" deal — auto-applied in the cart, not just
-    marketing copy. Buying `trigger_quantity` or more of `trigger_product`
-    automatically adds `reward_quantity` of `reward_product` free."""
-
-    label = models.CharField(max_length=150, help_text='Shown on the product, e.g. "Buy 2 get 1 free Sprite 500ml".')
+    label = models.CharField(max_length=150)
     trigger_product = models.ForeignKey(Product, related_name='bundle_triggers', on_delete=models.CASCADE)
     trigger_quantity = models.PositiveIntegerField(default=2)
     reward_product = models.ForeignKey(Product, related_name='bundle_rewards', on_delete=models.CASCADE)
@@ -491,16 +428,9 @@ class BundleOffer(models.Model):
 
 
 class SiteLogo(models.Model):
-    """Upload as many logo images as you like — pick which one is live the
-    same way as background images. Falls back to the default line-art
-    glass icon + wordmark if none is active."""
-
-    label = models.CharField(max_length=100, blank=True, help_text='Just a label for you, e.g. "2026 rebrand".')
-    image = models.ImageField(upload_to='site/logos/', help_text='Shown in the header. A wide/rectangular logo works best.')
-    is_active = models.BooleanField(
-        default=False,
-        help_text='Only one logo is shown at a time — selecting this one deselects any other.'
-    )
+    label = models.CharField(max_length=100, blank=True)
+    image = models.ImageField(upload_to='site/logos/')
+    is_active = models.BooleanField(default=False)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -525,21 +455,9 @@ class SiteLogo(models.Model):
 
 
 class BackgroundImage(models.Model):
-    """A sitewide ambient background photo. Upload as many as you like from
-    /admin/ — they form a gallery you can pick from; exactly one is ever
-    "active" (shown on the site) at a time."""
-
-    label = models.CharField(
-        max_length=100, blank=True, help_text='Just a label for you, e.g. "Festive season".'
-    )
-    image = models.ImageField(
-        upload_to='site/backgrounds/',
-        help_text='Sitewide ambient background, shown dimmed behind the glass UI.'
-    )
-    is_active = models.BooleanField(
-        default=False,
-        help_text='Only one background is shown at a time — selecting this one deselects any other.'
-    )
+    label = models.CharField(max_length=100, blank=True)
+    image = models.ImageField(upload_to='site/backgrounds/')
+    is_active = models.BooleanField(default=False)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -564,16 +482,10 @@ class BackgroundImage(models.Model):
 
 
 class DeliveryZone(models.Model):
-    """A neighbourhood/estate with its own delivery fee and ETA."""
-
-    name = models.CharField(max_length=150, unique=True, help_text='e.g. Kilimani, Westlands')
-    delivery_fee = models.DecimalField(max_digits=8, decimal_places=2, help_text='Fee in KES')
-    estimated_minutes = models.PositiveIntegerField(
-        default=45, help_text='Typical delivery time for this zone, in minutes'
-    )
-    is_active = models.BooleanField(
-        default=True, help_text='Turn off to stop deliveries to this zone.'
-    )
+    name = models.CharField(max_length=150, unique=True)
+    delivery_fee = models.DecimalField(max_digits=8, decimal_places=2)
+    estimated_minutes = models.PositiveIntegerField(default=45)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ['name']
@@ -583,33 +495,21 @@ class DeliveryZone(models.Model):
 
 
 class DeliveryAddress(models.Model):
-    """A saved apartment / doorstep delivery address for a customer."""
-
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, related_name='addresses', on_delete=models.CASCADE
     )
-    label = models.CharField(
-        max_length=50, default='Home', help_text='e.g. Home, Office'
-    )
+    label = models.CharField(max_length=50, default='Home')
     full_name = models.CharField(max_length=150)
-    phone_number = models.CharField(max_length=20, help_text='Used for M-Pesa STK push, e.g. 2547XXXXXXXX')
+    phone_number = models.CharField(max_length=20)
     building_name = models.CharField(max_length=150)
     apartment_number = models.CharField(max_length=50, blank=True)
     floor = models.CharField(max_length=20, blank=True)
     street = models.CharField(max_length=200)
-    area = models.CharField(max_length=150, help_text='Neighbourhood / estate')
+    area = models.CharField(max_length=150)
     city = models.CharField(max_length=100, default='Nairobi')
-    delivery_notes = models.TextField(
-        blank=True, help_text='Gate code, landmark, preferred drop-off instructions, etc.'
-    )
-    latitude = models.DecimalField(
-        max_digits=9, decimal_places=6, blank=True, null=True,
-        help_text='Captured from the browser/device GPS, if allowed.'
-    )
-    longitude = models.DecimalField(
-        max_digits=9, decimal_places=6, blank=True, null=True,
-        help_text='Captured from the browser/device GPS, if allowed.'
-    )
+    delivery_notes = models.TextField(blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
     is_default = models.BooleanField(default=False)
 
     class Meta:
@@ -641,14 +541,6 @@ class DeliveryAddress(models.Model):
 
 
 class SupplierSource(models.Model):
-    """A Shopify store you sync products from. Supports multiple stores —
-    one for each supplier. Each source keeps its own last-sync timestamp
-    and status so the admin can see the health of each connection.
-
-    Uses Shopify's Client Credentials Grant: we store the client_id and
-    client_secret from the Dev Dashboard, and exchange them for a
-    short-lived access token on each sync (cached for ~23h)."""
-
     class Provider(models.TextChoices):
         SHOPIFY = 'shopify', 'Shopify'
 
@@ -657,45 +549,22 @@ class SupplierSource(models.Model):
         ERROR = 'error', 'Error'
         NEVER = 'never', 'Never synced'
 
-    name = models.CharField(
-        max_length=100, unique=True,
-        help_text='A label for you, e.g. "Main Shopify Store".'
-    )
+    name = models.CharField(max_length=100, unique=True)
     provider = models.CharField(
         max_length=20, choices=Provider.choices, default=Provider.SHOPIFY,
     )
-    store_domain = models.CharField(
-        max_length=200,
-        help_text='e.g. your-store.myshopify.com (no https://, no trailing slash).'
-    )
-    client_id = models.CharField(
-        max_length=120, blank=True,
-        help_text='Shopify app Client ID from the Dev Dashboard → App settings.'
-    )
-    client_secret = models.CharField(
-        max_length=200, blank=True,
-        help_text='Shopify app Client Secret. Treat like a password.'
-    )
-    api_version = models.CharField(
-        max_length=20, default='2024-10',
-        help_text='Shopify Admin API version, e.g. 2024-10.'
-    )
+    store_domain = models.CharField(max_length=200)
+    client_id = models.CharField(max_length=120, blank=True)
+    client_secret = models.CharField(max_length=200, blank=True)
+    api_version = models.CharField(max_length=20, default='2024-10')
 
     default_department = models.ForeignKey(
         'store.Department', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='supplier_sources',
-        help_text='Department to assign when the Shopify product has no match.'
     )
 
-    is_active = models.BooleanField(
-        default=True,
-        help_text='Disable to stop this source from being synced.'
-    )
-    auto_approve = models.BooleanField(
-        default=True,
-        help_text='If off, imported products land in "pending approval" and '
-                  'you review them in Products admin before they go live.'
-    )
+    is_active = models.BooleanField(default=True)
+    auto_approve = models.BooleanField(default=True)
 
     last_synced_at = models.DateTimeField(null=True, blank=True)
     last_status = models.CharField(
@@ -710,3 +579,123 @@ class SupplierSource(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.store_domain})'
+
+
+class VehicleRental(models.Model):
+    """A booking for a rentable vehicle. Fully standalone — doesn't go
+    through the cart. One M-Pesa payment covers the full rental period
+    plus a refundable deposit. The vendor refunds the deposit outside
+    the system after the vehicle is returned in good condition.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending payment'
+        CONFIRMED = 'confirmed', 'Confirmed — ready for pickup'
+        ACTIVE = 'active', 'Currently rented out'
+        RETURNED = 'returned', 'Returned'
+        CANCELLED = 'cancelled', 'Cancelled'
+        FAILED = 'failed', 'Payment failed'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='vehicle_rentals',
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.PROTECT, related_name='rentals',
+    )
+    vendor = models.ForeignKey(
+        'vendors.Vendor', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='rentals',
+    )
+
+    pickup_date = models.DateField()
+    return_date = models.DateField()
+    total_days = models.PositiveIntegerField()
+
+    daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    rental_deposit = models.DecimalField(max_digits=10, decimal_places=2)
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    delivery_full_name = models.CharField(max_length=150)
+    delivery_phone = models.CharField(max_length=20)
+    delivery_address = models.TextField()
+    delivery_notes = models.TextField(blank=True)
+
+    driver_license = models.ImageField(upload_to='rentals/licenses/%Y/%m/')
+    customer_notes = models.TextField(blank=True)
+
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING,
+    )
+    mpesa_phone = models.CharField(max_length=20, blank=True)
+    mpesa_checkout_request_id = models.CharField(max_length=64, blank=True)
+    mpesa_receipt = models.CharField(max_length=40, blank=True)
+    mpesa_result_code = models.CharField(max_length=10, blank=True)
+    mpesa_result_desc = models.CharField(max_length=255, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['product', 'pickup_date', 'return_date']),
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['status', 'pickup_date']),
+        ]
+        verbose_name = 'vehicle rental'
+        verbose_name_plural = 'vehicle rentals'
+
+    def __str__(self):
+        return f'{self.product.name} — {self.pickup_date} to {self.return_date} ({self.status})'
+
+    @classmethod
+    def has_overlap(cls, product, pickup_date, return_date, exclude_pk=None):
+        """True if the vehicle is already booked for any overlapping window."""
+        qs = cls.objects.filter(
+            product=product,
+            status__in=[cls.Status.CONFIRMED, cls.Status.ACTIVE],
+            pickup_date__lt=return_date,
+            return_date__gt=pickup_date,
+        )
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+        return qs.exists()
+
+    @property
+    def is_past(self):
+        from django.utils import timezone
+        return self.return_date < timezone.localdate()
+
+    def mark_paid(self, receipt='', result_code='0', result_desc=''):
+        from django.utils import timezone
+        self.status = self.Status.CONFIRMED
+        self.paid_at = timezone.now()
+        self.mpesa_receipt = receipt
+        self.mpesa_result_code = result_code
+        self.mpesa_result_desc = result_desc[:255]
+        self.save(update_fields=[
+            'status', 'paid_at',
+            'mpesa_receipt', 'mpesa_result_code', 'mpesa_result_desc',
+        ])
+
+    def mark_failed(self, code='', desc=''):
+        self.status = self.Status.FAILED
+        self.mpesa_result_code = code
+        self.mpesa_result_desc = desc[:255]
+        self.save(update_fields=['status', 'mpesa_result_code', 'mpesa_result_desc'])
+
+    def mark_returned(self):
+        from django.utils import timezone
+        self.status = self.Status.RETURNED
+        self.returned_at = timezone.now()
+        self.save(update_fields=['status', 'returned_at'])
+
+    def mark_cancelled(self):
+        from django.utils import timezone
+        self.status = self.Status.CANCELLED
+        self.cancelled_at = timezone.now()
+        self.save(update_fields=['status', 'cancelled_at'])
