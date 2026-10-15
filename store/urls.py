@@ -15,4 +15,13 @@ urlpatterns = [
 
     path('addresses/', views.address_list, name='address_list'),
     path('addresses/add/', views.address_add, name='address_add'),
+
+    # Vehicle rentals
+path('rent/<int:product_id>/', views.rental_checkout, name='rental_checkout'),
+path('rent/<int:product_id>/pay/', views.rental_start_payment, name='rental_start_payment'),
+path('rent/<int:product_id>/availability/', views.rental_availability, name='rental_availability'),
+path('rent/booking/<int:booking_id>/', views.rental_success, name='rental_success'),
+path('rent/booking/<int:booking_id>/status/', views.rental_status, name='rental_status'),
+path('my-rentals/', views.my_rentals, name='my_rentals'),
+    
 ]
