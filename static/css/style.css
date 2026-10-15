@@ -1687,4 +1687,25 @@ html:not([data-theme]) body { background: #0A0A0A; color: #F5F1EC; }
 .product-grid::-webkit-scrollbar-thumb:hover {
     background: var(--green-bright);
 }
+
+
+
+@media (max-width: 860px) {
+    #shop .section-head {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: var(--void);
+        padding: 12px 0 16px;
+        margin-bottom: 0;
+    }
+
+    #departments {
+        position: sticky;
+        top: 68px;
+        z-index: 4;
+        background: var(--void);
+        padding: 8px 0;
+    }
+}
 /* Tags still fine — badges keep their pill shape for legibility */
