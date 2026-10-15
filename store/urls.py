@@ -23,5 +23,6 @@ path('rent/<int:product_id>/availability/', views.rental_availability, name='ren
 path('rent/booking/<int:booking_id>/', views.rental_success, name='rental_success'),
 path('rent/booking/<int:booking_id>/status/', views.rental_status, name='rental_status'),
 path('my-rentals/', views.my_rentals, name='my_rentals'),
+    path('products/', views.product_list, name='product_list'),
     
 ]
