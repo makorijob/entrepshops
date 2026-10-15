@@ -570,3 +570,61 @@ def my_rentals(request):
         .order_by('-created_at')
     )
     return render(request, 'store/my_rentals.html', {'rentals': rentals})
+
+
+
+
+
+@require_GET
+def product_list(request):
+    """The full product listing page. Renders a shell that the JS
+    hydrates; falls back to the server-rendered grid if JS is off."""
+    departments = Department.objects.filter(is_active=True)
+    categories = Category.objects.select_related('department').order_by('name')
+
+    # Initial products — same query params as the API, so bookmarked URLs
+    # with filters land on a page with the right grid already rendered.
+    qs = (
+        Product.objects.visible()
+        .select_related('category', 'department', 'vendor')
+        .prefetch_related('variants', 'images')
+        .order_by('-created_at')
+    )
+    department_slug = request.GET.get('department')
+    category_slug = request.GET.get('category')
+    search_query = request.GET.get('q', '').strip()
+
+    selected_department = None
+    selected_category = None
+
+    if department_slug:
+        selected_department = Department.objects.filter(
+            slug=department_slug, is_active=True
+        ).first()
+        if selected_department:
+            qs = qs.filter(department=selected_department)
+
+    if category_slug:
+        selected_category = Category.objects.filter(slug=category_slug).first()
+        if selected_category:
+            qs = qs.filter(category=selected_category)
+
+    if search_query:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(name__icontains=search_query) |
+            Q(description__icontains=search_query)
+        )
+
+    paginator = Paginator(qs, 24)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    return render(request, 'store/product_list.html', {
+        'products': page_obj.object_list,
+        'page_obj': page_obj,
+        'departments': departments,
+        'categories': categories,
+        'selected_department': selected_department,
+        'selected_category': selected_category,
+        'search_query': search_query,
+    })
