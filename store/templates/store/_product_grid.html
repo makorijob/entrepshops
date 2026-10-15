@@ -13,7 +13,9 @@
                 {% endif %}
             {% endwith %}
 
-            {% if product.has_variants %}
+            {% if product.is_rentable %}
+                <span class="badge start-from-badge" style="background:#E8B93C; color:#1a1208;">For Hire</span>
+            {% elif product.has_variants %}
                 {% with v=product.available_variants.first %}
                     {% if v.discount_percent %}
                         <span class="badge badge-warning discount-flag">-{{ v.discount_percent }}%</span>
@@ -24,18 +26,27 @@
             {% endif %}
         </a>
 
-        <p class="price">
-            {% if product.has_variants %}
-                {% with lo=product.price_range.0 hi=product.price_range.1 %}
-                    KES {{ lo }}{% if lo != hi %}–{{ hi }}{% endif %}
-                {% endwith %}
-            {% else %}
-                KES {{ product.price }}
-                {% if product.compare_at_price %}
-                    <span class="was-price">KES {{ product.compare_at_price }}</span>
-                {% endif %}
+        {% if product.is_rentable %}
+            <p class="price">
+                KES {{ product.daily_rate|floatformat:0 }}<span class="price-unit">/day</span>
+            </p>
+            {% if product.rental_deposit %}
+                <p class="product-deposit-note">+ KES {{ product.rental_deposit|floatformat:0 }} deposit</p>
             {% endif %}
-        </p>
+        {% else %}
+            <p class="price">
+                {% if product.has_variants %}
+                    {% with lo=product.price_range.0 hi=product.price_range.1 %}
+                        KES {{ lo }}{% if lo != hi %}–{{ hi }}{% endif %}
+                    {% endwith %}
+                {% else %}
+                    KES {{ product.price }}
+                    {% if product.compare_at_price %}
+                        <span class="was-price">KES {{ product.compare_at_price }}</span>
+                    {% endif %}
+                {% endif %}
+            </p>
+        {% endif %}
 
         <a href="{{ product.get_absolute_url }}" class="product-title-link">
             <h4 class="product-title">{{ product.name }}</h4>
@@ -60,7 +71,13 @@
                 {% endif %}
             {% endwith %}
 
-            {% if not product.is_deliverable %}
+            {% if product.is_rentable %}
+                {% if product.is_active and product.is_approved %}
+                    <span class="product-tag tag-success">Available for hire</span>
+                {% else %}
+                    <span class="product-tag tag-muted">Not bookable</span>
+                {% endif %}
+            {% elif not product.is_deliverable %}
                 <span class="product-tag tag-warning">Delivery N/A</span>
             {% elif not product.in_stock %}
                 <span class="product-tag tag-muted">Out of stock</span>
@@ -71,7 +88,11 @@
             {% endif %}
         </div>
 
-        {% if product.is_available %}
+        {% if product.is_rentable %}
+            <a href="{% url 'store:rental_checkout' product.id %}" class="btn btn-small btn-quick">
+                Rent this car
+            </a>
+        {% elif product.is_available %}
             <form action="{% url 'store:cart_add' product.id %}" method="post" class="ajax-add-form product-quick-add">
                 {% csrf_token %}
                 <input type="hidden" name="quantity" value="1">
