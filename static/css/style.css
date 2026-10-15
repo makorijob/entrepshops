@@ -1741,3 +1741,36 @@ html:not([data-theme]) .theme-toggle-sun { display: inline-flex; }
     .rental-dates { grid-template-columns: 1fr; }
     .rental-facts { grid-template-columns: 1fr; gap: 10px; }
 }
+
+
+/* Rental price display on product cards */
+.price-unit {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-mute);
+    margin-left: 2px;
+    letter-spacing: 0;
+}
+
+.product-deposit-note {
+    font-size: 0.72rem;
+    color: var(--text-mute);
+    margin: -2px 0 8px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+}
+
+/* The "For Hire" badge sits top-left over the image */
+.product-card .start-from-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 0;
+}
