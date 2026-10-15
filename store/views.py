@@ -1,15 +1,19 @@
+from datetime import datetime
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
 from .cart import Cart
 from .models import (
     Category, DeliveryAddress, Department, Product, ProductVariant, Promotion,
+    VehicleRental,
 )
 
 
@@ -147,8 +151,6 @@ def home(request):
         })
 
     # ---- Hero slider: featured PRODUCTS ----
-    # Tick "is_featured" on a product in admin and (optionally) fill in
-    # hero_tagline / hero_headline / hero_description to control the slide.
     featured_products = (
         Product.objects
         .visible()
@@ -159,8 +161,6 @@ def home(request):
     )
     hero_posters = [_HeroSlide(p) for p in featured_products]
 
-    # Fallback: if no products are marked featured, fall back to active
-    # Promotions so the hero isn't completely empty on a fresh install.
     if not hero_posters:
         hero_posters = list(
             Promotion.objects
@@ -193,7 +193,7 @@ def home(request):
 def product_detail(request, slug):
     product = get_object_or_404(
         Product.objects.visible()
-        .select_related('category', 'category__department', 'department')
+        .select_related('category', 'category__department', 'department', 'vendor')
         .prefetch_related('variants', 'images', 'offers'),
         slug=slug,
     )
@@ -336,3 +336,217 @@ def address_add(request):
         messages.success(request, 'Delivery address saved.')
         return redirect('store:address_list')
     return render(request, 'store/address_form.html')
+
+
+# ======================================================================
+# Vehicle rentals — Option A: standalone daily car hire
+# ======================================================================
+@login_required
+@require_GET
+def rental_checkout(request, product_id):
+    """Booking form for a rentable vehicle. Doesn't go through the cart."""
+    from .forms import VehicleRentalForm
+
+    product = get_object_or_404(
+        Product.objects.visible().select_related('vendor', 'department', 'category'),
+        id=product_id, is_rentable=True,
+    )
+
+    if not product.daily_rate:
+        messages.error(request, 'This vehicle has no daily rate set. Contact support.')
+        return redirect(product.get_absolute_url())
+
+    initial = {}
+    default_addr = (
+        request.user.addresses.filter(is_default=True).first()
+        or request.user.addresses.first()
+    )
+    if default_addr:
+        initial.update({
+            'delivery_full_name': default_addr.full_name,
+            'delivery_phone': default_addr.phone_number,
+            'delivery_address': default_addr.as_text(),
+        })
+
+    form = VehicleRentalForm(product=product, user=request.user, initial=initial)
+
+    return render(request, 'store/rental_checkout.html', {
+        'product': product,
+        'form': form,
+        'min_days': product.minimum_days or 1,
+    })
+
+
+@login_required
+@require_POST
+def rental_start_payment(request, product_id):
+    """Validates the booking, creates a PENDING VehicleRental, and fires
+    the M-Pesa STK push for the total amount."""
+    from payments.mpesa import MpesaError, normalize_phone, stk_push
+    from .forms import VehicleRentalForm
+
+    product = get_object_or_404(
+        Product.objects.visible().select_related('vendor'),
+        id=product_id, is_rentable=True,
+    )
+
+    if not product.daily_rate:
+        messages.error(request, 'This vehicle has no daily rate set.')
+        return redirect(product.get_absolute_url())
+
+    form = VehicleRentalForm(
+        request.POST, request.FILES, product=product, user=request.user,
+    )
+
+    if not form.is_valid():
+        return render(request, 'store/rental_checkout.html', {
+            'product': product,
+            'form': form,
+            'min_days': product.minimum_days or 1,
+        })
+
+    pickup = form.cleaned_data['pickup_date']
+    ret = form.cleaned_data['return_date']
+
+    # Race guard — re-check availability right before creating the booking
+    if VehicleRental.has_overlap(product, pickup, ret):
+        messages.error(
+            request,
+            'Sorry — someone just booked this vehicle for those dates. '
+            'Please pick a different window.'
+        )
+        return redirect('store:rental_checkout', product_id=product.id)
+
+    total_days = (ret - pickup).days
+    daily_rate = product.daily_rate
+    deposit = product.rental_deposit or 0
+    subtotal = daily_rate * total_days
+    total = subtotal + deposit
+
+    rental = VehicleRental.objects.create(
+        user=request.user,
+        product=product,
+        vendor=product.vendor,
+        pickup_date=pickup,
+        return_date=ret,
+        total_days=total_days,
+        daily_rate=daily_rate,
+        rental_deposit=deposit,
+        subtotal=subtotal,
+        total_amount=total,
+        delivery_full_name=form.cleaned_data['delivery_full_name'],
+        delivery_phone=form.cleaned_data['delivery_phone'],
+        delivery_address=form.cleaned_data['delivery_address'],
+        delivery_notes=form.cleaned_data.get('delivery_notes', ''),
+        driver_license=form.cleaned_data['driver_license'],
+        customer_notes=form.cleaned_data.get('customer_notes', ''),
+        status=VehicleRental.Status.PENDING,
+    )
+
+    phone = form.cleaned_data['delivery_phone']
+
+    try:
+        response = stk_push(
+            phone_number=phone,
+            amount=int(total),
+            account_reference=f'RENTAL{rental.id}',
+            transaction_desc=f'{product.name} rental ({total_days}d)',
+        )
+    except MpesaError as exc:
+        rental.mark_failed(code='init', desc=str(exc))
+        messages.error(request, f'Could not start the payment: {exc}')
+        return redirect('store:rental_checkout', product_id=product.id)
+
+    checkout_id = response.get('CheckoutRequestID', '')
+    if checkout_id:
+        rental.mpesa_checkout_request_id = checkout_id
+        rental.mpesa_phone = normalize_phone(phone)
+        rental.save(update_fields=['mpesa_checkout_request_id', 'mpesa_phone'])
+
+    messages.info(
+        request,
+        f'An M-Pesa prompt for KES {total:,} has been sent to {phone}. '
+        f'Enter your PIN to confirm the booking.'
+    )
+    return redirect('store:rental_success', booking_id=rental.id)
+
+
+@login_required
+@require_GET
+def rental_success(request, booking_id):
+    """Confirmation page — polled by JS until M-Pesa confirms."""
+    rental = get_object_or_404(
+        VehicleRental.objects.select_related('product'),
+        id=booking_id, user=request.user,
+    )
+    return render(request, 'store/rental_success.html', {'rental': rental})
+
+
+@login_required
+@require_GET
+def rental_status(request, booking_id):
+    """Polled by the success page — tells the frontend if payment landed."""
+    rental = get_object_or_404(
+        VehicleRental, id=booking_id, user=request.user,
+    )
+    return JsonResponse({
+        'status': rental.status,
+        'paid': rental.status == VehicleRental.Status.CONFIRMED,
+        'failed': rental.status in (
+            VehicleRental.Status.FAILED,
+            VehicleRental.Status.CANCELLED,
+        ),
+        'receipt': rental.mpesa_receipt,
+    })
+
+
+@require_GET
+def rental_availability(request, product_id):
+    """AJAX — checks whether a vehicle is free for a date range."""
+    product = get_object_or_404(Product, id=product_id, is_rentable=True)
+
+    try:
+        pickup = datetime.strptime(request.GET.get('pickup', ''), '%Y-%m-%d').date()
+        ret = datetime.strptime(request.GET.get('return', ''), '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'Invalid dates'}, status=400)
+
+    if ret <= pickup:
+        return JsonResponse({'available': False, 'reason': 'Return date must be after pickup.'})
+
+    min_days = product.minimum_days or 1
+    days = (ret - pickup).days
+    if days < min_days:
+        return JsonResponse({
+            'available': False,
+            'reason': f'Minimum rental is {min_days} day{"s" if min_days != 1 else ""}.',
+        })
+
+    if VehicleRental.has_overlap(product, pickup, ret):
+        return JsonResponse({
+            'available': False,
+            'reason': 'This vehicle is already booked for those dates.',
+        })
+
+    subtotal = product.daily_rate * days
+    deposit = product.rental_deposit or 0
+    return JsonResponse({
+        'available': True,
+        'days': days,
+        'subtotal': str(subtotal),
+        'deposit': str(deposit),
+        'total': str(subtotal + deposit),
+    })
+
+
+@login_required
+@require_GET
+def my_rentals(request):
+    """Customer's booking history."""
+    rentals = (
+        VehicleRental.objects
+        .filter(user=request.user)
+        .select_related('product', 'vendor')
+        .order_by('-created_at')
+    )
+    return render(request, 'store/my_rentals.html', {'rentals': rentals})
