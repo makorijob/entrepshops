@@ -280,4 +280,56 @@
             if (key === 'q' && searchInput) searchInput.value = '';
             if (key === 'min_price' && minPrice) minPrice.value = '';
             if (key === 'max_price' && maxPrice) maxPrice.value = '';
-            if (key === 'in_stock' && inStock) inStock.checked
+            if (key === 'in_stock' && inStock) inStock.checked = false;
+            if (key === 'type' && document.querySelector('[data-filter="type"][data-value="all"]')) {
+                document.querySelectorAll('#pl-type a').forEach(a => a.classList.remove('is-active'));
+                document.querySelector('[data-filter="type"][data-value="all"]').classList.add('is-active');
+            }
+        });
+    }
+
+    // -------- View toggle (grid / list) --------
+    function applyView(mode) {
+        if (mode === 'list') {
+            grid.classList.add('is-list');
+            if (viewListBtn) viewListBtn.classList.add('is-active');
+            if (viewGridBtn) viewGridBtn.classList.remove('is-active');
+        } else {
+            grid.classList.remove('is-list');
+            if (viewGridBtn) viewGridBtn.classList.add('is-active');
+            if (viewListBtn) viewListBtn.classList.remove('is-active');
+        }
+        try { localStorage.setItem('pl-view', mode); } catch (e) {}
+    }
+    const savedView = (() => { try { return localStorage.getItem('pl-view'); } catch (e) { return null; } })() || 'grid';
+    applyView(savedView);
+    if (viewGridBtn) viewGridBtn.addEventListener('click', () => applyView('grid'));
+    if (viewListBtn) viewListBtn.addEventListener('click', () => applyView('list'));
+
+    // -------- Infinite scroll --------
+    if ('IntersectionObserver' in window && sentinel) {
+        const io = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && hasNext && !isLoading) {
+                    fetchProducts(readUrlFilters(), nextPage, true);
+                }
+            });
+        }, { rootMargin: '400px 0px' });
+        io.observe(sentinel);
+    }
+
+    // -------- Back / forward --------
+    window.addEventListener('popstate', () => {
+        const filters = readUrlFilters();
+        if (searchInput) searchInput.value = filters.q;
+        if (sortSelect) sortSelect.value = filters.sort;
+        if (minPrice) minPrice.value = filters.min_price;
+        if (maxPrice) maxPrice.value = filters.max_price;
+        if (inStock) inStock.checked = filters.in_stock === '1';
+        renderChips(filters);
+        fetchProducts(filters, 1, false);
+    });
+
+    // -------- Initial chips --------
+    renderChips(readUrlFilters());
+})();
