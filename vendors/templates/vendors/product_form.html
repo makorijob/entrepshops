@@ -92,7 +92,7 @@
                     {% endif %}
                 </section>
 
-                <section class="glass shopify-card">
+                <section class="glass shopify-card" id="pricing-card">
                     <h3 class="shopify-section-title">Pricing</h3>
 
                     <div class="shopify-row">
@@ -134,6 +134,67 @@
                                 <span>{{ form.is_active.label }}</span>
                             </label>
                             <span class="helptext">{{ form.is_active.help_text }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="glass shopify-card" id="rental-card">
+                    <h3 class="shopify-section-title">Rental / hire</h3>
+
+                    <p style="margin: -8px 0 18px; color: var(--text-mute); font-size: 0.85rem; line-height: 1.55;">
+                        Tick "is rentable" to list this as a hire item instead of a
+                        one-time sale. The product page will show a booking form
+                        instead of "Add to cart", and customers will pay per day.
+                    </p>
+
+                    <label class="shopify-checkbox">
+                        {{ form.is_rentable }}
+                        <span>{{ form.is_rentable.label }}</span>
+                    </label>
+                    <span class="helptext">{{ form.is_rentable.help_text }}</span>
+                    {% if form.is_rentable.errors %}
+                        <ul class="errorlist">{% for e in form.is_rentable.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+
+                    <div id="rental-fields" style="display:none; margin-top: 20px;">
+                        <div class="shopify-row">
+                            <div class="shopify-field">
+                                <label for="{{ form.daily_rate.id_for_label }}">Daily rate (KES)</label>
+                                {{ form.daily_rate }}
+                                <span class="helptext">{{ form.daily_rate.help_text }}</span>
+                                {% if form.daily_rate.errors %}
+                                    <ul class="errorlist">{% for e in form.daily_rate.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                                {% endif %}
+                            </div>
+
+                            <div class="shopify-field">
+                                <label for="{{ form.rental_deposit.id_for_label }}">Refundable deposit (KES)</label>
+                                {{ form.rental_deposit }}
+                                <span class="helptext">{{ form.rental_deposit.help_text }}</span>
+                                {% if form.rental_deposit.errors %}
+                                    <ul class="errorlist">{% for e in form.rental_deposit.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="shopify-row">
+                            <div class="shopify-field">
+                                <label for="{{ form.minimum_days.id_for_label }}">Minimum rental days</label>
+                                {{ form.minimum_days }}
+                                <span class="helptext">{{ form.minimum_days.help_text }}</span>
+                                {% if form.minimum_days.errors %}
+                                    <ul class="errorlist">{% for e in form.minimum_days.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="shopify-field">
+                            <label for="{{ form.rental_pickup_notes.id_for_label }}">Pickup / delivery notes</label>
+                            {{ form.rental_pickup_notes }}
+                            <span class="helptext">{{ form.rental_pickup_notes.help_text }}</span>
+                            {% if form.rental_pickup_notes.errors %}
+                                <ul class="errorlist">{% for e in form.rental_pickup_notes.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                            {% endif %}
                         </div>
                     </div>
                 </section>
@@ -251,6 +312,24 @@
 
     deptSelect.addEventListener('change', filterCategories);
     filterCategories();
+
+    // ---------------- Rental fields show/hide ----------------
+    (function () {
+        const rentable = document.getElementById('id_is_rentable');
+        const rentalFields = document.getElementById('rental-fields');
+        const pricingCard = document.getElementById('pricing-card');
+        if (!rentable || !rentalFields) return;
+
+        function update() {
+            rentalFields.style.display = rentable.checked ? 'block' : 'none';
+            // When it's a rental, dim the standard pricing card — it's not used.
+            if (pricingCard) {
+                pricingCard.style.opacity = rentable.checked ? '0.55' : '1';
+            }
+        }
+        rentable.addEventListener('change', update);
+        update();
+    })();
 
     // ---------------- AI auto-fill ----------------
     const aiBtn = document.getElementById('ai-fill-btn');
