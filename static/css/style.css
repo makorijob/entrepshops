@@ -1632,4 +1632,59 @@ html:not([data-theme]) body { background: #0A0A0A; color: #F5F1EC; }
     transform: none;
 }
 
+/* ===========see==============================================================
+   Shop section — internal scroll
+   Keeps the search bar, department chips, and page header visible while
+   the product grid scrolls inside its own container.
+   ========================================================================= */
+
+/* On desktop: allow the grid to grow as it naturally would */
+@media (min-width: 861px) {
+    .shop-layout {
+        max-height: calc(100vh - 200px);
+    }
+    .product-grid {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+        padding-right: 8px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--green) transparent;
+    }
+}
+
+/* On tablet and phone: cap the grid at roughly 60% of the viewport */
+@media (max-width: 860px) {
+    #shop {
+        position: relative;
+    }
+
+    #shop .shop-layout {
+        max-height: 60vh;
+        overflow: hidden;
+    }
+
+    #shop .product-grid {
+        max-height: 60vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-right: 4px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--green) transparent;
+    }
+}
+
+/* Custom scrollbar for WebKit (Chrome, Safari, Edge) */
+.product-grid::-webkit-scrollbar {
+    width: 6px;
+}
+.product-grid::-webkit-scrollbar-track {
+    background: transparent;
+}
+.product-grid::-webkit-scrollbar-thumb {
+    background: var(--green);
+    border-radius: 3px;
+}
+.product-grid::-webkit-scrollbar-thumb:hover {
+    background: var(--green-bright);
+}
 /* Tags still fine — badges keep their pill shape for legibility */
