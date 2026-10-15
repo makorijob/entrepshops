@@ -214,12 +214,33 @@
                 <span class="eyebrow">The shop</span>
                 <h3 id="shop-heading">{% if selected_category %}{{ selected_category.name }}{% elif selected_department %}{{ selected_department.name }}{% else %}All departments{% endif %}</h3>
             </div>
-            <form id="shop-search-form" class="shop-search-form" role="search">
-                <svg style="width:16px;height:16px"><use href="#icon-search"/></svg>
-                <input type="search" name="q" id="shop-search-input"
-                       placeholder="Search {% if selected_department %}{{ selected_department.name|lower }}{% else %}products{% endif %}…"
-                       value="{{ search_query }}" autocomplete="off">
-            </form>
+            <div class="shop-controls">
+                <form id="shop-search-form" class="shop-search-form" role="search">
+                    <svg style="width:16px;height:16px"><use href="#icon-search"/></svg>
+                    <input type="search" name="q" id="shop-search-input"
+                           placeholder="Search {% if selected_department %}{{ selected_department.name|lower }}{% else %}products{% endif %}…"
+                           value="{{ search_query }}" autocomplete="off">
+                </form>
+                <div class="view-toggle" role="group" aria-label="View mode">
+                    <button type="button" class="view-toggle-btn is-active"
+                            id="view-grid" aria-label="Grid view" title="Grid view">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7"/>
+                            <rect x="14" y="3" width="7" height="7"/>
+                            <rect x="3" y="14" width="7" height="7"/>
+                            <rect x="14" y="14" width="7" height="7"/>
+                        </svg>
+                    </button>
+                    <button type="button" class="view-toggle-btn"
+                            id="view-list" aria-label="List view" title="List view">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
         <div class="shop-layout">
             <aside class="sidebar">
@@ -250,6 +271,14 @@
             <section class="product-grid" id="product-grid">
                 {% include "store/_product_grid.html" %}
             </section>
+            <div id="grid-sentinel" aria-hidden="true"></div>
+            <div id="grid-loader" class="grid-loader" style="display:none;">
+                <span class="grid-loader-spinner"></span>
+                <span>Loading more…</span>
+            </div>
+            <div id="grid-end" class="grid-end" style="display:none;">
+                You've reached the end.
+            </div>
         </div>
     </section>
 </div>
@@ -310,8 +339,51 @@
     const grid = document.getElementById('product-grid');
     const heading = document.getElementById('shop-heading');
     const categoryList = document.getElementById('category-list');
+    const sentinel = document.getElementById('grid-sentinel');
+    const loader = document.getElementById('grid-loader');
+    const endNote = document.getElementById('grid-end');
+    const viewGridBtn = document.getElementById('view-grid');
+    const viewListBtn = document.getElementById('view-list');
     if (!grid || !categoryList) return;
 
+    // ---- State for infinite scroll ----
+    let nextPage = 2;
+    let hasNext = {% if page_obj.has_next %}true{% else %}false{% endif %};
+    let isLoading = false;
+    let currentUrl = window.location.pathname + window.location.search;
+
+    // ---- View mode (grid / list) ----
+    function applyViewMode(mode) {
+        if (mode === 'list') {
+            grid.classList.add('is-list');
+            if (viewListBtn) viewListBtn.classList.add('is-active');
+            if (viewGridBtn) viewGridBtn.classList.remove('is-active');
+        } else {
+            grid.classList.remove('is-list');
+            if (viewGridBtn) viewGridBtn.classList.add('is-active');
+            if (viewListBtn) viewListBtn.classList.remove('is-active');
+        }
+        try { localStorage.setItem('shop-view', mode); } catch (e) {}
+    }
+
+    const savedView = (() => {
+        try { return localStorage.getItem('shop-view'); } catch (e) { return null; }
+    })() || 'grid';
+    applyViewMode(savedView);
+
+    if (viewGridBtn) viewGridBtn.addEventListener('click', () => applyViewMode('grid'));
+    if (viewListBtn) viewListBtn.addEventListener('click', () => applyViewMode('list'));
+
+    // ---- Reset grid on new search / category ----
+    function resetGrid(newNextPage, newHasNext, newUrl) {
+        nextPage = newNextPage;
+        hasNext = newHasNext;
+        currentUrl = newUrl;
+        if (endNote) endNote.style.display = 'none';
+        if (loader) loader.style.display = 'none';
+    }
+
+    // ---- Load a fresh page (category switch or search) ----
     async function loadCategory(url, push) {
         grid.classList.add('is-loading');
         try {
@@ -329,6 +401,9 @@
             const match = categoryList.querySelector(`a[href="${new URL(url, window.location.origin).search}#shop"]`)
                 || (url.indexOf('category=') === -1 ? categoryList.querySelector('a[href$="#shop"]') : null);
             if (match) match.classList.add('active');
+
+            resetGrid(data.next_page || 2, !!data.has_next, url);
+
             if (push) history.pushState({}, '', url + '#shop');
         } catch (err) {
             window.location.href = url;
@@ -337,6 +412,53 @@
         }
     }
 
+    // ---- Load the next page and append (infinite scroll) ----
+    async function loadMore() {
+        if (isLoading || !hasNext) return;
+        isLoading = true;
+        if (loader) loader.style.display = 'flex';
+
+        const url = new URL(currentUrl, window.location.origin);
+        url.searchParams.set('page', nextPage);
+
+        try {
+            const res = await fetch(url.toString(), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) throw new Error('bad response');
+            const data = await res.json();
+
+            const temp = document.createElement('div');
+            temp.innerHTML = data.grid_html;
+            while (temp.firstChild) {
+                grid.appendChild(temp.firstChild);
+            }
+
+            hasNext = !!data.has_next;
+            nextPage = data.next_page || (nextPage + 1);
+
+            if (!hasNext && endNote) {
+                endNote.style.display = 'block';
+            }
+        } catch (err) {
+            console.warn('Infinite scroll failed:', err);
+        } finally {
+            isLoading = false;
+            if (loader) loader.style.display = 'none';
+        }
+    }
+
+    // ---- IntersectionObserver for the sentinel ----
+    if ('IntersectionObserver' in window && sentinel) {
+        const io = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) loadMore();
+            });
+        }, { rootMargin: '200px 0px' });
+        io.observe(sentinel);
+    }
+
+    // ---- Category + search wiring ----
     categoryList.addEventListener('click', (e) => {
         const link = e.target.closest('a[data-category-link]');
         if (!link) return;
@@ -359,11 +481,13 @@
         loadCategory(url, true);
     }
 
-    searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
-    searchInput.addEventListener('input', () => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(runSearch, 350);
-    });
+    if (searchForm) searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runSearch, 350);
+        });
+    }
 
     document.addEventListener('click', (e) => {
         const link = e.target.closest('a[data-page-link]');
