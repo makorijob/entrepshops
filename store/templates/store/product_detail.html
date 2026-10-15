@@ -74,68 +74,110 @@
                 </p>
             {% endif %}
 
-            {% if product.has_variants %}
-            <div class="pd-sizes">
-                <span class="pd-sizes-label">
-                    {% if product.department.unit_kind == 'screen' %}Screen size
-                    {% elif product.department.unit_kind == 'volume' %}Size
-                    {% elif product.department.unit_kind == 'weight' %}Weight
-                    {% else %}Choose an option{% endif %}
-                </span>
-                <div class="pd-size-buttons" id="pd-size-buttons">
-                    {% for variant in product.available_variants %}
-                        <button type="button"
-                                class="pd-size-btn {% if forloop.first %}is-active{% endif %}"
-                                data-variant-id="{{ variant.id }}"
-                                data-price="{{ variant.price }}"
-                                data-compare-at="{{ variant.compare_at_price|default:'' }}"
-                                data-stock="{{ variant.stock }}"
-                                {% if variant.stock == 0 %}disabled{% endif %}>
-                            {{ variant.size_label }}
-                            {% if variant.discount_percent %}
-                                <span class="pd-size-badge">-{{ variant.discount_percent }}%</span>
-                            {% endif %}
-                        </button>
-                    {% endfor %}
+            {% if product.is_rentable %}
+                {# ---------- Rental listing ---------- #}
+                <div class="pd-rental-block">
+                    <div class="pd-rental-rate">
+                        <span class="eyebrow">Hire this vehicle</span>
+                        <div class="pd-rental-price">
+                            KES {{ product.daily_rate|floatformat:0 }}<span class="pd-rental-unit">/day</span>
+                        </div>
+                        {% if product.rental_deposit %}
+                            <p class="muted">
+                                Plus KES {{ product.rental_deposit|floatformat:0 }}
+                                refundable deposit
+                            </p>
+                        {% endif %}
+                        {% if product.minimum_days > 1 %}
+                            <p class="muted">Minimum {{ product.minimum_days }} days</p>
+                        {% endif %}
+                        {% if product.rental_pickup_notes %}
+                            <p class="muted pd-rental-note">{{ product.rental_pickup_notes }}</p>
+                        {% endif %}
+                    </div>
+
+                    {% if product.description %}
+                        <p class="pd-description">{{ product.description }}</p>
+                    {% endif %}
+
+                    {% if product.is_available %}
+                        <a href="{% url 'store:rental_checkout' product.id %}" class="btn btn-full">
+                            Rent this car
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                                <polyline points="12 5 19 12 12 19"/>
+                            </svg>
+                        </a>
+                    {% else %}
+                        <p class="badge badge-muted">Currently unavailable</p>
+                    {% endif %}
                 </div>
-            </div>
-            {% endif %}
 
-            <div class="pd-price" id="pd-price">
-                <span class="pd-price-current" id="pd-price-current">
-                    KES {{ product.available_variants.first.price|default:product.price }}{% if product.volume_ml and not product.has_variants %} <span class="muted">/ {{ product.volume_ml }}ml</span>{% endif %}
-                </span>
-                <span class="pd-price-compare" id="pd-price-compare">
-                    {% with v=product.available_variants.first %}
-                        {% if v.compare_at_price %}KES {{ v.compare_at_price }}{% elif product.compare_at_price %}KES {{ product.compare_at_price }}{% endif %}
-                    {% endwith %}
-                </span>
-            </div>
-
-            {% if product.description %}
-                <p class="pd-description">{{ product.description }}</p>
-            {% endif %}
-
-            {% if not product.is_available %}
-                <p class="badge badge-muted">Currently unavailable</p>
             {% else %}
-                <form action="{% url 'store:cart_add' product.id %}"
-                      method="post"
-                      class="add-form ajax-add-form pd-add-form"
-                      id="pd-add-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="variant_id" id="pd-variant-id"
-                           value="{{ product.available_variants.first.id|default:'' }}">
-                    <label for="quantity">Quantity</label>
-                    <input type="number"
-                           id="quantity"
-                           name="quantity"
-                           value="1"
-                           min="1"
-                           max="{{ product.available_variants.first.stock|default:product.stock }}">
-                    <input type="hidden" name="next" value="{{ request.path }}">
-                    <button type="submit" class="btn">Add to cart</button>
-                </form>
+                {# ---------- Standard product ---------- #}
+                {% if product.has_variants %}
+                <div class="pd-sizes">
+                    <span class="pd-sizes-label">
+                        {% if product.department.unit_kind == 'screen' %}Screen size
+                        {% elif product.department.unit_kind == 'volume' %}Size
+                        {% elif product.department.unit_kind == 'weight' %}Weight
+                        {% else %}Choose an option{% endif %}
+                    </span>
+                    <div class="pd-size-buttons" id="pd-size-buttons">
+                        {% for variant in product.available_variants %}
+                            <button type="button"
+                                    class="pd-size-btn {% if forloop.first %}is-active{% endif %}"
+                                    data-variant-id="{{ variant.id }}"
+                                    data-price="{{ variant.price }}"
+                                    data-compare-at="{{ variant.compare_at_price|default:'' }}"
+                                    data-stock="{{ variant.stock }}"
+                                    {% if variant.stock == 0 %}disabled{% endif %}>
+                                {{ variant.size_label }}
+                                {% if variant.discount_percent %}
+                                    <span class="pd-size-badge">-{{ variant.discount_percent }}%</span>
+                                {% endif %}
+                            </button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="pd-price" id="pd-price">
+                    <span class="pd-price-current" id="pd-price-current">
+                        KES {{ product.available_variants.first.price|default:product.price }}{% if product.volume_ml and not product.has_variants %} <span class="muted">/ {{ product.volume_ml }}ml</span>{% endif %}
+                    </span>
+                    <span class="pd-price-compare" id="pd-price-compare">
+                        {% with v=product.available_variants.first %}
+                            {% if v.compare_at_price %}KES {{ v.compare_at_price }}{% elif product.compare_at_price %}KES {{ product.compare_at_price }}{% endif %}
+                        {% endwith %}
+                    </span>
+                </div>
+
+                {% if product.description %}
+                    <p class="pd-description">{{ product.description }}</p>
+                {% endif %}
+
+                {% if not product.is_available %}
+                    <p class="badge badge-muted">Currently unavailable</p>
+                {% else %}
+                    <form action="{% url 'store:cart_add' product.id %}"
+                          method="post"
+                          class="add-form ajax-add-form pd-add-form"
+                          id="pd-add-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="variant_id" id="pd-variant-id"
+                               value="{{ product.available_variants.first.id|default:'' }}">
+                        <label for="quantity">Quantity</label>
+                        <input type="number"
+                               id="quantity"
+                               name="quantity"
+                               value="1"
+                               min="1"
+                               max="{{ product.available_variants.first.stock|default:product.stock }}">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <button type="submit" class="btn">Add to cart</button>
+                    </form>
+                {% endif %}
             {% endif %}
 
             {% if product.offers.exists %}
@@ -198,10 +240,6 @@
     });
 
     // ---- Lightbox wiring ----
-    // Only the thumbnails carry data-lightbox-src; the main image uses
-    // whatever its current src is at click time (which changes when the
-    // user clicks a thumb). That way "click main image" opens whichever
-    // photo is on screen.
     const lightboxImages = Array.from(
         document.querySelectorAll('[data-lightbox-src]')
     ).map(el => ({
@@ -211,10 +249,6 @@
     }));
 
     if (lightboxImages.length && window.Lightbox) {
-        // Click a thumbnail → if it's already the active one, open the
-        // lightbox. If it's a different one, just switch the main image
-        // (normal behavior). This matches what users expect: tap once to
-        // preview, tap the preview to enlarge.
         thumbs.forEach((thumb, i) => {
             thumb.addEventListener('click', (e) => {
                 if (thumb.classList.contains('is-active')) {
@@ -224,8 +258,6 @@
             });
         });
 
-        // Click the big image → open the lightbox at whichever image
-        // currently matches main.src.
         if (main) {
             main.addEventListener('click', () => {
                 const currentSrc = main.getAttribute('src');
