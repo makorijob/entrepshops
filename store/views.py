@@ -138,6 +138,11 @@ def home(request):
             'grid_html': grid_html,
             'heading': heading,
             'dept_theme': selected_department.theme if selected_department else '',
+            'page_number': page_obj.number,
+            'num_pages': page_obj.paginator.num_pages,
+            'has_next': page_obj.has_next(),
+            'next_page': page_obj.next_page_number() if page_obj.has_next() else None,
+            'total_count': page_obj.paginator.count,
         })
 
     featured_products = (
@@ -186,12 +191,6 @@ def product_detail(request, slug):
         slug=slug,
     )
 
-    # ------------------------------------------------------------------
-    # Related products
-    # 1st: same category, same rentable flag, exclude current, limit 4.
-    # 2nd: top up with same-department products (still same rentable flag).
-    # 3rd: if the product has no category, fall back to same department.
-    # ------------------------------------------------------------------
     RELATED_LIMIT = 4
     related = []
     seen_ids = {product.pk}
@@ -205,13 +204,11 @@ def product_detail(request, slug):
         .order_by('-created_at')
     )
 
-    # Stage 1 — same category
     if product.category_id:
         cat_items = list(base_qs.filter(category_id=product.category_id)[:RELATED_LIMIT])
         related.extend(cat_items)
         seen_ids.update(p.pk for p in cat_items)
 
-    # Stage 2 — same department (any category)
     if len(related) < RELATED_LIMIT and product.department_id:
         remaining = RELATED_LIMIT - len(related)
         dept_items = list(
@@ -221,8 +218,6 @@ def product_detail(request, slug):
         related.extend(dept_items)
         seen_ids.update(p.pk for p in dept_items)
 
-    # Stage 3 — if still short and the product has no department, use the
-    # same category from *any* department as a last resort (edge case).
     if len(related) < RELATED_LIMIT and not product.department_id and product.category_id:
         remaining = RELATED_LIMIT - len(related)
         extras = list(
