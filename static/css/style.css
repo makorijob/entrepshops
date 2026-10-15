@@ -1591,3 +1591,45 @@ html:not([data-theme]) body { background: #0A0A0A; color: #F5F1EC; }
 @media (max-width: 520px) {
     .related-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }
+
+
+/* =========================================================================
+   Flat product cards — no border, no radius, no shadow
+   ========================================================================= */
+
+/* Card container itself */
+.product-card {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0 0 12px;
+}
+.product-card:hover {
+    transform: none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* The product image wrapper — flat */
+.product-card img {
+    border-radius: 0;
+}
+.product-card .img-placeholder {
+    border-radius: 0;
+    border: 0;
+}
+
+/* "Add to cart" buttons — kill the pill shape */
+.product-card .btn-quick,
+.product-card .btn {
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Remove the hover lift on cards — with no border, the jump feels wrong */
+.product-card:hover {
+    transform: none;
+}
+
+/* Tags still fine — badges keep their pill shape for legibility */
