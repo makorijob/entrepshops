@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}My rentals — Entrep - Shop{% endblock %}
+
+{% block content %}
+<div class="container">
+
+    <div class="page-head">
+        <span class="eyebrow">Vehicle hire</span>
+        <h1>My rentals</h1>
+        <p class="lede">Every vehicle you've booked through EntrepShop.</p>
+    </div>
+
+    {% if rentals %}
+        <div class="rental-list">
+            {% for r in rentals %}
+                <article class="glass rental-card">
+                    <div class="rental-card-media">
+                        {% with img=r.product.primary_image %}
+                            {% if img %}
+                                <img src="{{ img.url }}" alt="{{ r.product.name }}">
+                            {% else %}
+                                <div class="img-placeholder">
+                                    <svg viewBox="0 0 24 24"><use href="#icon-truck"/></svg>
+                                </div>
+                            {% endif %}
+                        {% endwith %}
+                    </div>
+
+                    <div class="rental-card-body">
+                        <div class="rental-card-head">
+                            <h3>{{ r.product.name }}</h3>
+                            {% if r.status == 'confirmed' %}
+                                <span class="badge badge-success">Confirmed</span>
+                            {% elif r.status == 'active' %}
+                                <span class="badge badge-success">Active</span>
+                            {% elif r.status == 'returned' %}
+                                <span class="badge badge-muted">Returned</span>
+                            {% elif r.status == 'pending' %}
+                                <span class="badge badge-warning">Pending payment</span>
+                            {% elif r.status == 'failed' %}
+                                <span class="badge badge-warning">Payment failed</span>
+                            {% else %}
+                                <span class="badge badge-muted">{{ r.get_status_display }}</span>
+                            {% endif %}
+                        </div>
+
+                        <p class="muted rental-card-dates">
+                            {{ r.pickup_date|date:"d M Y" }} → {{ r.return_date|date:"d M Y" }}
+                            &nbsp;·&nbsp; {{ r.total_days }} day{{ r.total_days|pluralize }}
+                        </p>
+
+                        <div class="rental-card-meta">
+                            <span><strong>KES {{ r.total_amount|floatformat:0 }}</strong> paid</span>
+                            {% if r.vendor %}
+                                <span class="muted">by {{ r.vendor.business_name }}</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="rental-card-actions">
+                            {% if r.status == 'pending' %}
+                                <a href="{% url 'store:rental_success' r.id %}" class="btn btn-small">Check payment</a>
+                            {% endif %}
+                            {% if r.status == 'confirmed' or r.status == 'active' %}
+                                <span class="muted rental-help">
+                                    Delivery to: {{ r.delivery_address|truncatechars:80 }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="glass rental-empty">
+            <p class="muted">You haven't booked any vehicles yet.</p>
+            <a href="{% url 'store:home' %}" class="btn btn-small">Browse the shop</a>
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}
