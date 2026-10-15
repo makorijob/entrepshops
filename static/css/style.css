@@ -1708,4 +1708,200 @@ html:not([data-theme]) body { background: #0A0A0A; color: #F5F1EC; }
         padding: 8px 0;
     }
 }
+
+/* =========================================================================
+   Shop controls — view toggle
+   ========================================================================= */
+.shop-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-glass-strong);
+    background: transparent;
+}
+.view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.view-toggle-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.view-toggle-btn.is-active { background: var(--green); color: var(--void); }
+.view-toggle-btn + .view-toggle-btn { border-left: 1px solid var(--border-glass-strong); }
+
+/* =========================================================================
+   List view — single column, image left, content right
+   ========================================================================= */
+.product-grid.is-list {
+    display: flex;
+    flex-direction: column;
+    column-count: unset;
+    gap: 12px;
+}
+
+.product-grid.is-list .product-card {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 16px;
+    padding: 12px;
+    align-items: center;
+    margin-bottom: 0;
+}
+
+.product-grid.is-list .product-card > a:first-child {
+    grid-row: 1 / span 6;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--panel-solid);
+    border: 1px solid var(--border-glass);
+    overflow: hidden;
+}
+
+.product-grid.is-list .product-card > a:first-child img {
+    width: 100%;
+    height: 100%;
+    max-height: 160px;
+    object-fit: cover;
+}
+
+.product-grid.is-list .product-card > a:first-child .img-placeholder {
+    width: 100%;
+    height: 140px;
+    border: 0;
+}
+
+.product-grid.is-list .product-card .price {
+    font-size: 1.15rem;
+    margin: 0 0 4px;
+}
+
+.product-grid.is-list .product-card .product-title {
+    font-size: 0.95rem;
+    margin: 0 0 6px;
+}
+
+.product-grid.is-list .product-card .product-meta-row {
+    margin: 6px 0;
+}
+
+.product-grid.is-list .product-card .ajax-add-form,
+.product-grid.is-list .product-card .product-quick-add,
+.product-grid.is-list .product-card > .btn,
+.product-grid.is-list .product-card > a.btn {
+    margin-top: 8px;
+    width: auto;
+    align-self: start;
+}
+
+.product-grid.is-list .product-card .start-from-badge,
+.product-grid.is-list .product-card .discount-flag {
+    position: static;
+    display: inline-block;
+    margin-bottom: 8px;
+}
+
+/* =========================================================================
+   Equal-height cards in grid mode
+   ========================================================================= */
+.product-grid:not(.is-list) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-count: unset;
+    gap: 12px;
+}
+
+.product-grid:not(.is-list) .product-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    margin-bottom: 0;
+}
+
+.product-grid:not(.is-list) .product-card > a:first-child {
+    flex-shrink: 0;
+}
+
+.product-grid:not(.is-list) .product-card .ajax-add-form,
+.product-grid:not(.is-list) .product-card .product-quick-add {
+    margin-top: auto;
+}
+
+/* On wider screens, expand to more columns */
+@media (min-width: 700px) {
+    .product-grid:not(.is-list) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .product-grid.is-list .product-card { grid-template-columns: 200px 1fr; }
+}
+@media (min-width: 1100px) {
+    .product-grid:not(.is-list) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* =========================================================================
+   Infinite scroll — loader and end note
+   ========================================================================= */
+.grid-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px 0;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+}
+
+.grid-loader-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-glass-strong);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: grid-spin 0.8s linear infinite;
+}
+
+@keyframes grid-spin {
+    to { transform: rotate(360deg); }
+}
+
+.grid-end {
+    padding: 24px 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    border-top: 1px solid var(--border-glass);
+    margin-top: 20px;
+}
+
+#grid-sentinel {
+    height: 1px;
+    visibility: hidden;
+}
+
+/* Light theme adjustments */
+[data-theme="light"] .view-toggle { border-color: rgba(120, 90, 50, 0.22); }
+[data-theme="light"] .view-toggle-btn { color: #4A4038; }
+[data-theme="light"] .view-toggle-btn:hover { background: rgba(120, 90, 50, 0.06); }
+[data-theme="light"] .view-toggle-btn.is-active { background: var(--green); color: #FFFFFF; }
+[data-theme="light"] .view-toggle-btn + .view-toggle-btn { border-left-color: rgba(120, 90, 50, 0.22); }
+[data-theme="light"] .grid-loader { color: #8A7A68; }
+[data-theme="light"] .grid-loader-spinner { border-color: rgba(120, 90, 50, 0.20); border-top-color: var(--green); }
+[data-theme="light"] .grid-end { color: #8A7A68; border-top-color: rgba(120, 90, 50, 0.10); }
 /* Tags still fine — badges keep their pill shape for legibility */
