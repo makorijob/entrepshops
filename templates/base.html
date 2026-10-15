@@ -51,7 +51,7 @@
             </a>
 
             <nav class="main-nav">
-                <a href="{% url 'store:home' %}">Shop</a>
+                <a href="{% url 'store:product_list' %}">Shop</a>
 
                 {% if not user.is_authenticated or not user.vendor_profile %}
                     <a href="{% url 'vendors:become_vendor' %}">Sell on Entrep</a>
@@ -120,14 +120,13 @@
     <footer class="site-footer">
         <div class="container">
             <span>Entrep - Shop &copy; {% now "Y" %} — quality products, delivered to your door.</span>
-            <span><a href="{% url 'store:home' %}">Shop</a> &nbsp;&middot;&nbsp; <a href="{% url 'store:address_list' %}">Delivery</a></span>
+            <span><a href="{% url 'store:product_list' %}">Shop</a> &nbsp;&middot;&nbsp; <a href="{% url 'store:address_list' %}">Delivery</a></span>
         </div>
     </footer>
 
     <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
 
     <script src="{% static 'js/lightbox.js' %}" defer></script>
-    <script src="{% static 'js/grid.js' %}" defer></script>
 
     <script>
         (function () {
