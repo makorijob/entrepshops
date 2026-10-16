@@ -98,6 +98,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'accounts.middleware.ReferralCaptureMiddleware',
+    'store.context_processors.site_background',
 ]
 
 ROOT_URLCONF = 'drinkshop.urls'
