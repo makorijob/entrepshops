@@ -98,7 +98,6 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'accounts.middleware.ReferralCaptureMiddleware',
-    'store.context_processors.site_background',
 ]
 
 ROOT_URLCONF = 'drinkshop.urls'
@@ -116,6 +115,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'store.context_processors.cart',
                 'store.context_processors.site_settings',
+                'store.context_processors.site_background',
             ],
         },
     },
